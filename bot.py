@@ -23,14 +23,17 @@ from telegram.ext import (
 # =====================================================
 
 TOKEN = os.getenv("BOT_TOKEN")
+
+# ID администратора SVOYAK
 ADMIN_ID = 8999035301
 
-# =====================================================
-# WEB SERVER ДЛЯ RENDER
-# =====================================================
 
+# =====================================================
+# WEB-СЕРВЕР ДЛЯ RENDER
+# =====================================================
 
 class HealthHandler(BaseHTTPRequestHandler):
+
     def do_GET(self):
         self.send_response(200)
         self.end_headers()
@@ -42,7 +45,12 @@ class HealthHandler(BaseHTTPRequestHandler):
 
 def run_web_server():
     port = int(os.getenv("PORT", "10000"))
-    server = HTTPServer(("0.0.0.0", port), HealthHandler)
+
+    server = HTTPServer(
+        ("0.0.0.0", port),
+        HealthHandler
+    )
+
     server.serve_forever()
 
 
@@ -50,37 +58,37 @@ def run_web_server():
 # ГЛАВНОЕ МЕНЮ
 # =====================================================
 
-
 def main_menu():
+
     keyboard = [
         [
             InlineKeyboardButton(
                 "🛒 Магазин",
-                callback_data="shop",
+                callback_data="shop"
             ),
             InlineKeyboardButton(
                 "🆓 Бесплатный проект",
-                callback_data="free",
+                callback_data="free"
             ),
         ],
         [
             InlineKeyboardButton(
                 "🔨 Собрать проект",
-                callback_data="build",
+                callback_data="build"
             ),
             InlineKeyboardButton(
                 "📁 Мои проекты",
-                callback_data="projects",
+                callback_data="projects"
             ),
         ],
         [
             InlineKeyboardButton(
                 "🆘 Поддержка",
-                callback_data="support",
+                callback_data="support"
             ),
             InlineKeyboardButton(
                 "🤝 Партнёрка",
-                callback_data="partner",
+                callback_data="partner"
             ),
         ],
     ]
@@ -92,26 +100,26 @@ def main_menu():
 # МАГАЗИН
 # =====================================================
 
-
 def shop_menu():
+
     keyboard = [
         [
             InlineKeyboardButton(
                 "📦 Проекты",
-                callback_data="shop_projects",
-            ),
+                callback_data="shop_projects"
+            )
         ],
         [
             InlineKeyboardButton(
                 "📢 Реклама в канале",
-                callback_data="shop_ads",
-            ),
+                callback_data="shop_ads"
+            )
         ],
         [
             InlineKeyboardButton(
                 "🏠 Главное меню",
-                callback_data="main_menu",
-            ),
+                callback_data="main_menu"
+            )
         ],
     ]
 
@@ -119,35 +127,35 @@ def shop_menu():
 
 
 # =====================================================
-# МЕНЮ ПРОЕКТОВ
+# ПРОЕКТЫ
 # =====================================================
 
-
 def projects_menu():
+
     keyboard = [
         [
             InlineKeyboardButton(
                 "📦 BLACK RUSSIA PRO · ⭐️ 200",
-                callback_data="project_pro",
-            ),
+                callback_data="project_pro"
+            )
         ],
         [
             InlineKeyboardButton(
                 "🎁 BLACK RUSSIA ULTIMATE v2.2 · ⭐️ 500",
-                callback_data="project_ultimate",
-            ),
+                callback_data="project_ultimate"
+            )
         ],
         [
             InlineKeyboardButton(
                 "👁 PRO ИЛИ ULTIMATE v2.2",
-                callback_data="project_compare",
-            ),
+                callback_data="project_compare"
+            )
         ],
         [
             InlineKeyboardButton(
                 "◀️ Назад",
-                callback_data="shop",
-            ),
+                callback_data="shop"
+            )
         ],
     ]
 
@@ -158,20 +166,20 @@ def projects_menu():
 # PRO
 # =====================================================
 
-
 def pro_menu():
+
     keyboard = [
         [
             InlineKeyboardButton(
                 "🪙 TELEGRAM STARS · 200",
-                callback_data="buy_pro",
-            ),
+                callback_data="buy_pro"
+            )
         ],
         [
             InlineKeyboardButton(
                 "◀️ Назад к проектам",
-                callback_data="shop_projects",
-            ),
+                callback_data="shop_projects"
+            )
         ],
     ]
 
@@ -182,20 +190,20 @@ def pro_menu():
 # ULTIMATE
 # =====================================================
 
-
 def ultimate_menu():
+
     keyboard = [
         [
             InlineKeyboardButton(
                 "🪙 TELEGRAM STARS · 500",
-                callback_data="buy_ultimate",
-            ),
+                callback_data="buy_ultimate"
+            )
         ],
         [
             InlineKeyboardButton(
                 "◀️ Назад к проектам",
-                callback_data="shop_projects",
-            ),
+                callback_data="shop_projects"
+            )
         ],
     ]
 
@@ -206,54 +214,108 @@ def ultimate_menu():
 # СРАВНЕНИЕ
 # =====================================================
 
-
 def compare_menu():
-    keyboard = [
+
+    return InlineKeyboardMarkup([
         [
             InlineKeyboardButton(
                 "◀️ Назад к проектам",
-                callback_data="shop_projects",
-            ),
+                callback_data="shop_projects"
+            )
+        ]
+    ])
+
+
+# =====================================================
+# ОБЫЧНОЕ МЕНЮ НАЗАД
+# =====================================================
+
+def back_menu(callback="main_menu"):
+
+    return InlineKeyboardMarkup([
+        [
+            InlineKeyboardButton(
+                "◀️ Назад",
+                callback_data=callback
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                "🏠 Главное меню",
+                callback_data="main_menu"
+            )
+        ],
+    ])
+
+
+# =====================================================
+# ПОДДЕРЖКА
+# =====================================================
+
+def support_menu():
+
+    keyboard = [
+        [
+            InlineKeyboardButton(
+                "💬 Написать в поддержку",
+                url="https://t.me/svoyak_support_bot"
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                "📄 Пользовательское соглашение",
+                url="https://telegra.ph/Polzovatelskoe-soglashenie-08-24-56"
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                "🔐 Политика конфиденциальности",
+                url="https://telegra.ph/Politika-konfidencialnosti-08-24-77"
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                "🏠 Главное меню",
+                callback_data="main_menu"
+            )
         ],
     ]
 
     return InlineKeyboardMarkup(keyboard)
 
 
-# =====================================================
-# НАЗАД / ГЛАВНОЕ МЕНЮ
-# =====================================================
+async def show_support(query):
 
+    text = (
+        "💬 ПОДДЕРЖКА SVOYAK BOT\n"
+        "━━━━━━━━━━━━━━━━━━━━\n\n"
+        "⬆️ По всем вопросам пишите:\n"
+        "@svoyak_support_bot\n\n"
+        "👛 Если вопрос связан с оплатой, "
+        "укажите номер заказа и подробно опишите ситуацию.\n\n"
+        "📨 Также обращение можно отправить командой:\n"
+        "/paysupport номер заказа и что случилось\n\n"
+        "⚠️ Пожалуйста, не отправляйте несколько "
+        "одинаковых сообщений подряд."
+    )
 
-def back_menu(callback="main_menu"):
-    return InlineKeyboardMarkup(
-        [
-            [
-                InlineKeyboardButton(
-                    "◀️ Назад",
-                    callback_data=callback,
-                )
-            ],
-            [
-                InlineKeyboardButton(
-                    "🏠 Главное меню",
-                    callback_data="main_menu",
-                )
-            ],
-        ]
+    await query.edit_message_text(
+        text,
+        reply_markup=support_menu()
     )
 
 
 # =====================================================
-# /START
+# START
 # =====================================================
-
 
 async def start(
     update: Update,
-    context: ContextTypes.DEFAULT_TYPE,
+    context: ContextTypes.DEFAULT_TYPE
 ):
+
     user = update.effective_user
+
     name = user.first_name or "пользователь"
 
     text = (
@@ -271,7 +333,7 @@ async def start(
 
     await update.message.reply_text(
         text,
-        reply_markup=main_menu(),
+        reply_markup=main_menu()
     )
 
 
@@ -279,12 +341,13 @@ async def start(
 # КНОПКИ
 # =====================================================
 
-
 async def buttons(
     update: Update,
-    context: ContextTypes.DEFAULT_TYPE,
+    context: ContextTypes.DEFAULT_TYPE
 ):
+
     query = update.callback_query
+
     await query.answer()
 
     # =================================================
@@ -294,6 +357,7 @@ async def buttons(
     if query.data == "main_menu":
 
         user = query.from_user
+
         name = user.first_name or "пользователь"
 
         text = (
@@ -311,8 +375,16 @@ async def buttons(
 
         await query.edit_message_text(
             text,
-            reply_markup=main_menu(),
+            reply_markup=main_menu()
         )
+
+    # =================================================
+    # ПОДДЕРЖКА
+    # =================================================
+
+    elif query.data == "support":
+
+        await show_support(query)
 
     # =================================================
     # МАГАЗИН
@@ -333,7 +405,7 @@ async def buttons(
 
         await query.edit_message_text(
             text,
-            reply_markup=shop_menu(),
+            reply_markup=shop_menu()
         )
 
     # =================================================
@@ -359,11 +431,11 @@ async def buttons(
 
         await query.edit_message_text(
             text,
-            reply_markup=projects_menu(),
+            reply_markup=projects_menu()
         )
 
     # =================================================
-    # BLACK RUSSIA PRO
+    # PRO
     # =================================================
 
     elif query.data == "project_pro":
@@ -390,7 +462,7 @@ async def buttons(
 
         await query.edit_message_text(
             text,
-            reply_markup=pro_menu(),
+            reply_markup=pro_menu()
         )
 
     # =================================================
@@ -422,7 +494,7 @@ async def buttons(
 
         await query.edit_message_text(
             text,
-            reply_markup=ultimate_menu(),
+            reply_markup=ultimate_menu()
         )
 
     # =================================================
@@ -456,7 +528,7 @@ async def buttons(
 
         await query.edit_message_text(
             text,
-            reply_markup=compare_menu(),
+            reply_markup=compare_menu()
         )
 
     # =================================================
@@ -468,7 +540,7 @@ async def buttons(
         await query.edit_message_text(
             "🆓 БЕСПЛАТНЫЙ ПРОЕКТ\n\n"
             "Здесь появится бесплатный проект.",
-            reply_markup=back_menu(),
+            reply_markup=back_menu()
         )
 
     # =================================================
@@ -481,7 +553,7 @@ async def buttons(
             "🔨 СОБРАТЬ ПРОЕКТ\n\n"
             "После покупки здесь можно будет начать "
             "персональную сборку проекта.",
-            reply_markup=back_menu(),
+            reply_markup=back_menu()
         )
 
     # =================================================
@@ -494,19 +566,7 @@ async def buttons(
             "📁 МОИ ПРОЕКТЫ\n\n"
             "Здесь будут отображаться купленные проекты "
             "и статус их сборки.",
-            reply_markup=back_menu(),
-        )
-
-    # =================================================
-    # ПОДДЕРЖКА
-    # =================================================
-
-    elif query.data == "support":
-
-        await query.edit_message_text(
-            "🆘 ПОДДЕРЖКА\n\n"
-            "Раздел поддержки будет подключён позже.",
-            reply_markup=back_menu(),
+            reply_markup=back_menu()
         )
 
     # =================================================
@@ -519,7 +579,19 @@ async def buttons(
             "🤝 ПАРТНЁРКА\n\n"
             "Партнёрская программа SVOYAK будет "
             "подключена следующим этапом.",
-            reply_markup=back_menu(),
+            reply_markup=back_menu()
+        )
+
+    # =================================================
+    # РЕКЛАМА
+    # =================================================
+
+    elif query.data == "shop_ads":
+
+        await query.edit_message_text(
+            "📢 РЕКЛАМА В КАНАЛЕ\n\n"
+            "Здесь будут тарифы на рекламу.",
+            reply_markup=back_menu("shop")
         )
 
     # =================================================
@@ -532,7 +604,7 @@ async def buttons(
             update,
             context,
             "BLACK RUSSIA PRO",
-            200,
+            200
         )
 
     # =================================================
@@ -545,20 +617,19 @@ async def buttons(
             update,
             context,
             "BLACK RUSSIA ULTIMATE v2.2",
-            500,
+            500
         )
 
 
 # =====================================================
-# ОТПРАВКА СЧЁТА TELEGRAM STARS
+# ОПЛАТА TELEGRAM STARS
 # =====================================================
-
 
 async def send_project_invoice(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE,
     project_name: str,
-    stars: int,
+    stars: int
 ):
 
     user = update.effective_user
@@ -566,7 +637,7 @@ async def send_project_invoice(
     prices = [
         LabeledPrice(
             label=project_name,
-            amount=stars,
+            amount=stars
         )
     ]
 
@@ -574,8 +645,8 @@ async def send_project_invoice(
         chat_id=user.id,
         title=project_name,
         description=(
-            f"Персональная сборка проекта {project_name} "
-            "под твой сервер."
+            f"Персональная сборка проекта "
+            f"{project_name} под твой сервер."
         ),
         payload=f"project:{project_name}:{user.id}",
         currency="XTR",
@@ -587,28 +658,29 @@ async def send_project_invoice(
 # PRE-CHECKOUT
 # =====================================================
 
-
 async def precheckout_callback(
     update: Update,
-    context: ContextTypes.DEFAULT_TYPE,
+    context: ContextTypes.DEFAULT_TYPE
 ):
 
     query = update.pre_checkout_query
 
-    await query.answer(ok=True)
+    await query.answer(
+        ok=True
+    )
 
 
 # =====================================================
 # УСПЕШНАЯ ОПЛАТА
 # =====================================================
 
-
 async def successful_payment(
     update: Update,
-    context: ContextTypes.DEFAULT_TYPE,
+    context: ContextTypes.DEFAULT_TYPE
 ):
 
     payment = update.message.successful_payment
+
     user = update.effective_user
 
     payload = payment.invoice_payload
@@ -616,12 +688,19 @@ async def successful_payment(
     if not payload.startswith("project:"):
         return
 
-    parts = payload.split(":", 2)
+    parts = payload.split(
+        ":",
+        2
+    )
 
     if len(parts) != 3:
         return
 
     project_name = parts[1]
+
+    # -------------------------------------------------
+    # СООБЩЕНИЕ ПОЛЬЗОВАТЕЛЮ
+    # -------------------------------------------------
 
     text = (
         "✅ ОПЛАТА ПОЛУЧЕНА!\n"
@@ -637,27 +716,30 @@ async def successful_payment(
 
     await update.message.reply_text(
         text,
-        reply_markup=InlineKeyboardMarkup(
+        reply_markup=InlineKeyboardMarkup([
             [
-                [
-                    InlineKeyboardButton(
-                        "📁 Мои проекты",
-                        callback_data="projects",
-                    )
-                ],
-                [
-                    InlineKeyboardButton(
-                        "🏠 Главное меню",
-                        callback_data="main_menu",
-                    )
-                ],
-            ]
-        ),
+                InlineKeyboardButton(
+                    "📁 Мои проекты",
+                    callback_data="projects"
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    "🏠 Главное меню",
+                    callback_data="main_menu"
+                )
+            ],
+        ])
     )
 
-    # Уведомление администратора
+    # -------------------------------------------------
+    # УВЕДОМЛЕНИЕ АДМИНУ
+    # -------------------------------------------------
+
     if ADMIN_ID:
+
         try:
+
             await context.bot.send_message(
                 chat_id=ADMIN_ID,
                 text=(
@@ -667,12 +749,16 @@ async def successful_payment(
                     f"🆔 Telegram ID: {user.id}\n"
                     f"📦 Проект: {project_name}\n"
                     f"🪙 Сумма: {payment.total_amount} ⭐\n"
-                    f"🧾 Charge ID: {payment.telegram_payment_charge_id}"
-                ),
+                    f"🧾 Charge ID: "
+                    f"{payment.telegram_payment_charge_id}"
+                )
             )
+
         except Exception as error:
+
             print(
-                f"Не удалось отправить уведомление админу: {error}"
+                "Не удалось отправить уведомление админу: "
+                f"{error}"
             )
 
 
@@ -680,39 +766,55 @@ async def successful_payment(
 # ЗАПУСК
 # =====================================================
 
-
 def run():
 
     if not TOKEN:
+
         raise RuntimeError(
             "Не задан BOT_TOKEN в Environment Variables Render."
         )
 
+    # Запускаем HTTP-сервер Render
     threading.Thread(
         target=run_web_server,
-        daemon=True,
+        daemon=True
     ).start()
 
-    app = Application.builder().token(TOKEN).build()
-
-    app.add_handler(
-        CommandHandler("start", start)
+    # Создаём Telegram-приложение
+    app = (
+        Application
+        .builder()
+        .token(TOKEN)
+        .build()
     )
 
+    # Команда /start
     app.add_handler(
-        CallbackQueryHandler(buttons)
+        CommandHandler(
+            "start",
+            start
+        )
     )
 
+    # Inline-кнопки
+    app.add_handler(
+        CallbackQueryHandler(
+            buttons
+        )
+    )
+
+    # Telegram Stars — подтверждение перед оплатой
     app.add_handler(
         PreCheckoutQueryHandler(
             precheckout_callback
         )
     )
 
+    # Успешная оплата
     app.add_handler(
         MessageHandler(
             filters.SUCCESSFUL_PAYMENT,
-            successful_payment,
+            successful_payment
         )
     )
 
@@ -720,6 +822,10 @@ def run():
 
     app.run_polling()
 
+
+# =====================================================
+# MAIN
+# =====================================================
 
 if __name__ == "__main__":
     run()
