@@ -1,4 +1,5 @@
 import os
+import json
 import threading
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
@@ -26,30 +27,120 @@ TOKEN = os.getenv("BOT_TOKEN")
 
 ADMIN_ID = 8999035301
 
+DATA_FILE = "svoyak_data.json"
+
 
 # =====================================================
-# WEB-СЕРВЕР ДЛЯ RENDER
+# БАЗА ДАННЫХ JSON
+# =====================================================
+
+def load_data():
+
+    if not os.path.exists(DATA_FILE):
+
+        return {
+            "users": {}
+        }
+
+    try:
+
+        with open(
+            DATA_FILE,
+            "r",
+            encoding="utf-8"
+        ) as file:
+
+            data = json.load(file)
+
+        if "users" not in data:
+            data["users"] = {}
+
+        return data
+
+    except Exception:
+
+        return {
+            "users": {}
+        }
+
+
+def save_data(data):
+
+    with open(
+        DATA_FILE,
+        "w",
+        encoding="utf-8"
+    ) as file:
+
+        json.dump(
+            data,
+            file,
+            ensure_ascii=False,
+            indent=4
+        )
+
+
+def get_user(data, user_id):
+
+    user_id = str(user_id)
+
+    if user_id not in data["users"]:
+
+        data["users"][user_id] = {
+            "referrer": None,
+            "projects": [],
+            "balance": 0,
+            "total_profit": 0,
+            "monthly_profit": 0,
+            "weekly_profit": 0,
+            "yesterday_profit": 0,
+            "today_profit": 0,
+            "referrals": [],
+            "has_purchased": False
+        }
+
+    return data["users"][user_id]
+
+
+# =====================================================
+# WEB-СЕРВЕР RENDER
 # =====================================================
 
 class HealthHandler(BaseHTTPRequestHandler):
 
     def do_GET(self):
-        self.send_response(200)
-        self.end_headers()
-        self.wfile.write(b"SVOYAK BOT is running!")
 
-    def log_message(self, format, *args):
+        self.send_response(200)
+
+        self.end_headers()
+
+        self.wfile.write(
+            b"SVOYAK BOT is running!"
+        )
+
+    def log_message(
+        self,
+        format,
+        *args
+    ):
+
         return
 
 
 def run_web_server():
 
     port = int(
-        os.getenv("PORT", "10000")
+        os.getenv(
+            "PORT",
+            "10000"
+        )
     )
 
     server = HTTPServer(
-        ("0.0.0.0", port),
+        (
+            "0.0.0.0",
+            port
+        ),
         HealthHandler
     )
 
@@ -187,12 +278,12 @@ def projects_menu():
 
 
 # =====================================================
-# PRO
+# PRO МЕНЮ
 # =====================================================
 
 def pro_menu():
 
-    keyboard = [
+    return InlineKeyboardMarkup([
 
         [
             InlineKeyboardButton(
@@ -208,20 +299,23 @@ def pro_menu():
             )
         ],
 
-    ]
+        [
+            InlineKeyboardButton(
+                "🏠 Главное меню",
+                callback_data="main_menu"
+            )
+        ],
 
-    return InlineKeyboardMarkup(
-        keyboard
-    )
+    ])
 
 
 # =====================================================
-# ULTIMATE
+# ULTIMATE МЕНЮ
 # =====================================================
 
 def ultimate_menu():
 
-    keyboard = [
+    return InlineKeyboardMarkup([
 
         [
             InlineKeyboardButton(
@@ -237,11 +331,14 @@ def ultimate_menu():
             )
         ],
 
-    ]
+        [
+            InlineKeyboardButton(
+                "🏠 Главное меню",
+                callback_data="main_menu"
+            )
+        ],
 
-    return InlineKeyboardMarkup(
-        keyboard
-    )
+    ])
 
 
 # =====================================================
@@ -302,7 +399,7 @@ def back_menu(
 
 def support_menu():
 
-    keyboard = [
+    return InlineKeyboardMarkup([
 
         [
             InlineKeyboardButton(
@@ -332,31 +429,193 @@ def support_menu():
             )
         ],
 
-    ]
+    ])
 
-    return InlineKeyboardMarkup(
-        keyboard
+
+# =====================================================
+# ПАРТНЁРСКАЯ ПРОГРАММА
+# =====================================================
+
+async def show_partner(
+    query,
+    context
+):
+
+    data = load_data()
+
+    user_id = query.from_user.id
+
+    user = get_user(
+        data,
+        user_id
     )
 
+    # Получаем username бота автоматически
+    bot_info = await context.bot.get_me()
 
-async def show_support(query):
+    bot_username = bot_info.username
+
+    referral_link = (
+        f"https://t.me/{bot_username}"
+        f"?start=ref_{user_id}"
+    )
+
+    referrals_count = len(
+        user.get(
+            "referrals",
+            []
+        )
+    )
 
     text = (
-        "💬 ПОДДЕРЖКА SVOYAK BOT\n"
-        "━━━━━━━━━━━━━━━━━━━━\n\n"
-        "⬆️ По всем вопросам пишите:\n"
-        "@svoyak_support_bot\n\n"
-        "👛 Если вопрос связан с оплатой, "
-        "укажите номер заказа и подробно опишите ситуацию.\n\n"
-        "📨 Также обращение можно отправить командой:\n"
-        "/paysupport номер заказа и что случилось\n\n"
-        "⚠️ Пожалуйста, не отправляйте несколько "
-        "одинаковых сообщений подряд."
+        "💸 ПАРТНЁРСКАЯ ПРОГРАММА\n"
+        "━━━━━━━━━━━━━━━━━━━━\n"
+        "Наша партнёрская программа позволяет "
+        "зарабатывать без вложений. Приглашай новых "
+        "пользователей и получай 15% от суммы их покупок.\n\n"
+
+        "📊 Статистика прибыли:\n"
+        f"За всё время: {user.get('total_profit', 0)} 💸\n"
+        f"За месяц: {user.get('monthly_profit', 0)} 💸\n"
+        f"За неделю: {user.get('weekly_profit', 0)} 💸\n"
+        f"За вчера: {user.get('yesterday_profit', 0)} 💸\n"
+        f"За сегодня: {user.get('today_profit', 0)} 💸\n\n"
+
+        f"👛 Текущий баланс: {user.get('balance', 0)} 💸\n"
+        f"👥 Реферальных пользователей: {referrals_count}\n\n"
+
+        "🔗 Твоя реферальная ссылка:\n"
+        f"{referral_link}\n\n"
+
+        "ℹ Начисления пойдут после твоей первой покупки — "
+        "это защита от накрутки. Приглашённые уже засчитываются."
     )
+
+    keyboard = InlineKeyboardMarkup([
+
+        [
+            InlineKeyboardButton(
+                "🛒 Магазин",
+                callback_data="shop"
+            )
+        ],
+
+        [
+            InlineKeyboardButton(
+                "🏠 Главное меню",
+                callback_data="main_menu"
+            )
+        ],
+
+    ])
 
     await query.edit_message_text(
         text,
-        reply_markup=support_menu()
+        reply_markup=keyboard
+    )
+
+
+# =====================================================
+# МОИ ПРОЕКТЫ
+# =====================================================
+
+async def show_projects(query):
+
+    data = load_data()
+
+    user = get_user(
+        data,
+        query.from_user.id
+    )
+
+    projects = user.get(
+        "projects",
+        []
+    )
+
+    if not projects:
+
+        text = (
+            "📁 МОИ ПРОЕКТЫ\n"
+            "━━━━━━━━━━━━━━━━━━━━\n\n"
+            "У тебя пока нет созданных проектов.\n\n"
+            "Выбери BLACK RUSSIA PRO или "
+            "ULTIMATE v2.2 в магазине."
+        )
+
+        keyboard = InlineKeyboardMarkup([
+
+            [
+                InlineKeyboardButton(
+                    "🛒 Магазин",
+                    callback_data="shop"
+                )
+            ],
+
+            [
+                InlineKeyboardButton(
+                    "🏠 Главное меню",
+                    callback_data="main_menu"
+                )
+            ],
+
+        ])
+
+        await query.edit_message_text(
+            text,
+            reply_markup=keyboard
+        )
+
+        return
+
+    text = (
+        "📁 МОИ ПРОЕКТЫ\n"
+        "━━━━━━━━━━━━━━━━━━━━\n\n"
+        "Твои проекты:\n\n"
+    )
+
+    for index, project in enumerate(
+        projects,
+        1
+    ):
+
+        text += (
+            f"📦 {index}. {project}\n"
+        )
+
+    text += (
+        "\n🔨 Проект можно открыть "
+        "после перехода в студию сборки."
+    )
+
+    keyboard = InlineKeyboardMarkup([
+
+        [
+            InlineKeyboardButton(
+                "🔨 Собрать проект",
+                callback_data="build"
+            )
+        ],
+
+        [
+            InlineKeyboardButton(
+                "🛒 Магазин",
+                callback_data="shop"
+            )
+        ],
+
+        [
+            InlineKeyboardButton(
+                "🏠 Главное меню",
+                callback_data="main_menu"
+            )
+        ],
+
+    ])
+
+    await query.edit_message_text(
+        text,
+        reply_markup=keyboard
     )
 
 
@@ -369,7 +628,62 @@ async def start(
     context: ContextTypes.DEFAULT_TYPE
 ):
 
+    data = load_data()
+
     user = update.effective_user
+
+    current_user = get_user(
+        data,
+        user.id
+    )
+
+    # =================================================
+    # РЕФЕРАЛ
+    # =================================================
+
+    if context.args:
+
+        argument = context.args[0]
+
+        if argument.startswith("ref_"):
+
+            ref_id_text = argument[4:]
+
+            try:
+
+                ref_id = int(
+                    ref_id_text
+                )
+
+                # Нельзя пригласить самого себя
+                if ref_id != user.id:
+
+                    # Реферер существует
+                    if str(ref_id) in data["users"]:
+
+                        # Только если реферер ещё не назначен
+                        if current_user.get(
+                            "referrer"
+                        ) is None:
+
+                            current_user["referrer"] = ref_id
+
+                            ref_user = get_user(
+                                data,
+                                ref_id
+                            )
+
+                            if user.id not in ref_user["referrals"]:
+
+                                ref_user["referrals"].append(
+                                    user.id
+                                )
+
+                            save_data(data)
+
+            except ValueError:
+
+                pass
 
     name = user.first_name or "пользователь"
 
@@ -442,6 +756,27 @@ async def buttons(
         await show_support(query)
 
     # =================================================
+    # ПАРТНЁРКА
+    # =================================================
+
+    elif query.data == "partner":
+
+        await show_partner(
+            query,
+            context
+        )
+
+    # =================================================
+    # МОИ ПРОЕКТЫ
+    # =================================================
+
+    elif query.data == "projects":
+
+        await show_projects(
+            query
+        )
+
+    # =================================================
     # МАГАЗИН
     # =================================================
 
@@ -510,8 +845,7 @@ async def buttons(
             "Проект остаётся твоим\n"
             "• Название, цвета, иконка и ID приложения — под тебя\n"
             "• APK не конфликтует с другими проектами\n"
-            "• Авторство полностью твоё\n"
-            "• Обновления твоей копии при наличии соответствующих прав\n\n"
+            "• Авторство полностью твоё\n\n"
             "🔓 Доступ откроется сразу после оплаты."
         )
 
@@ -536,10 +870,6 @@ async def buttons(
             "• Аукцион, система трейда и Black Pass\n"
             "• Блэкджек, кости и система водолаза\n"
             "• Тюнинг-центры работают как полноценные бизнесы\n\n"
-            "Готов к нагрузке\n"
-            "• Цель — стабильная работа при высоком онлайне\n"
-            "• Код оптимизирован\n"
-            "• Основные причины крашей исправляются в процессе сборки\n\n"
             "Проект остаётся твоим\n"
             "• Название, цвета, логотипы, иконка и ID приложения — под тебя\n"
             "• Персональная лицензия привязывается к твоему серверу\n"
@@ -567,16 +897,13 @@ async def buttons(
             "• Свой APK: название, цвета, иконка, ID приложения\n"
             "• Тюнинг-центры, радиальное меню, зелёные зоны, кейсы\n"
             "• Донат и инвентарь\n"
-            "• Установка мода и базы на твой сервер\n"
-            "• Бесплатные обновления при наличии соответствующих прав\n\n"
+            "• Установка мода и базы на твой сервер\n\n"
             "Только в ULTIMATE v2.2\n"
             "• Маркетплейс, гаражи, контейнеры\n"
             "• Аукцион, трейд, Black Pass\n"
             "• Блэкджек, кости, водолаз\n"
             "• Тюнинг-центры как бизнесы\n"
-            "• Оптимизация под высокий онлайн\n"
-            "• Персональная лицензия на твой сервер\n"
-            "• Подключение сайта логов и AutoDonate\n\n"
+            "• Оптимизация под высокий онлайн\n\n"
             "ℹ Начинаешь и хочешь просто запуститься — бери PRO.\n"
             "Планируешь большой проект с экономикой — ULTIMATE v2.2."
         )
@@ -638,29 +965,14 @@ async def buttons(
         )
 
     # =================================================
-    # МОИ ПРОЕКТЫ
-    # =================================================
-
-    elif query.data == "projects":
-
-        await query.edit_message_text(
-            "📁 МОИ ПРОЕКТЫ\n\n"
-            "Здесь будут отображаться купленные проекты "
-            "и статус их сборки.",
-            reply_markup=back_menu()
-        )
-
-    # =================================================
     # ПАРТНЁРКА
     # =================================================
 
     elif query.data == "partner":
 
-        await query.edit_message_text(
-            "🤝 ПАРТНЁРКА\n\n"
-            "Партнёрская программа SVOYAK будет "
-            "подключена следующим этапом.",
-            reply_markup=back_menu()
+        await show_partner(
+            query,
+            context
         )
 
     # =================================================
@@ -703,14 +1015,14 @@ async def buttons(
 
 
 # =====================================================
-# ОПЛАТА TELEGRAM STARS
+# СЧЁТ НА ОПЛАТУ
 # =====================================================
 
 async def send_project_invoice(
-    update: Update,
-    context: ContextTypes.DEFAULT_TYPE,
-    project_name: str,
-    stars: int
+    update,
+    context,
+    project_name,
+    stars
 ):
 
     user = update.effective_user
@@ -729,9 +1041,11 @@ async def send_project_invoice(
             f"Персональная сборка проекта "
             f"{project_name} под твой сервер."
         ),
-        payload=f"project:{project_name}:{user.id}",
+        payload=(
+            f"project:{project_name}:{user.id}"
+        ),
         currency="XTR",
-        prices=prices,
+        prices=prices
     )
 
 
@@ -740,8 +1054,8 @@ async def send_project_invoice(
 # =====================================================
 
 async def precheckout_callback(
-    update: Update,
-    context: ContextTypes.DEFAULT_TYPE
+    update,
+    context
 ):
 
     query = update.pre_checkout_query
@@ -756,17 +1070,22 @@ async def precheckout_callback(
 # =====================================================
 
 async def successful_payment(
-    update: Update,
-    context: ContextTypes.DEFAULT_TYPE
+    update,
+    context
 ):
 
-    payment = update.message.successful_payment
+    payment = (
+        update.message.successful_payment
+    )
 
     user = update.effective_user
 
     payload = payment.invoice_payload
 
-    if not payload.startswith("project:"):
+    if not payload.startswith(
+        "project:"
+    ):
+
         return
 
     parts = payload.split(
@@ -775,9 +1094,92 @@ async def successful_payment(
     )
 
     if len(parts) != 3:
+
         return
 
     project_name = parts[1]
+
+    stars = payment.total_amount
+
+    # =================================================
+    # ЗАГРУЖАЕМ ДАННЫЕ
+    # =================================================
+
+    data = load_data()
+
+    buyer = get_user(
+        data,
+        user.id
+    )
+
+    # =================================================
+    # ДОБАВЛЯЕМ ПРОЕКТ
+    # =================================================
+
+    if project_name not in buyer["projects"]:
+
+        buyer["projects"].append(
+            project_name
+        )
+
+    # Пользователь совершил покупку
+    buyer["has_purchased"] = True
+
+    # =================================================
+    # РЕФЕРАЛЬНОЕ НАЧИСЛЕНИЕ
+    # =================================================
+
+    referrer_id = buyer.get(
+        "referrer"
+    )
+
+    referral_profit = 0
+
+    if referrer_id:
+
+        referrer = get_user(
+            data,
+            referrer_id
+        )
+
+        # Начисления только если реферер
+        # уже совершил собственную покупку
+        if referrer.get(
+            "has_purchased",
+            False
+        ):
+
+            referral_profit = int(
+                stars * 0.15
+            )
+
+            referrer["balance"] += (
+                referral_profit
+            )
+
+            referrer["total_profit"] += (
+                referral_profit
+            )
+
+            referrer["monthly_profit"] += (
+                referral_profit
+            )
+
+            referrer["weekly_profit"] += (
+                referral_profit
+            )
+
+            referrer["today_profit"] += (
+                referral_profit
+            )
+
+    # =================================================
+    # СОХРАНЯЕМ
+    # =================================================
+
+    save_data(
+        data
+    )
 
     # =================================================
     # ПОЛЬЗОВАТЕЛЮ
@@ -788,7 +1190,8 @@ async def successful_payment(
         "━━━━━━━━━━━━━━━━━━━━\n\n"
         f"📦 Проект: {project_name}\n"
         f"👤 Telegram ID: {user.id}\n"
-        f"🪙 Оплачено: {payment.total_amount} ⭐\n\n"
+        f"🪙 Оплачено: {stars} ⭐\n\n"
+        "📁 Проект добавлен в «Мои проекты».\n"
         "🔓 Заказ закреплён за твоим Telegram.\n"
         "🔨 Персональная сборка подготовлена к запуску.\n\n"
         "⏳ Следующий этап — настройка названия, "
@@ -803,6 +1206,13 @@ async def successful_payment(
                 InlineKeyboardButton(
                     "📁 Мои проекты",
                     callback_data="projects"
+                )
+            ],
+
+            [
+                InlineKeyboardButton(
+                    "🔨 Собрать проект",
+                    callback_data="build"
                 )
             ],
 
@@ -824,25 +1234,37 @@ async def successful_payment(
 
         try:
 
+            admin_text = (
+                "💰 НОВАЯ ОПЛАТА\n"
+                "━━━━━━━━━━━━━━━━━━━━\n"
+                f"👤 Пользователь: {user.first_name}\n"
+                f"🆔 Telegram ID: {user.id}\n"
+                f"📦 Проект: {project_name}\n"
+                f"🪙 Сумма: {stars} ⭐"
+            )
+
+            if referral_profit > 0:
+
+                admin_text += (
+                    f"\n💸 Реферальное начисление: "
+                    f"{referral_profit} 💸"
+                )
+
+            admin_text += (
+                f"\n🧾 Charge ID: "
+                f"{payment.telegram_payment_charge_id}"
+            )
+
             await context.bot.send_message(
                 chat_id=ADMIN_ID,
-                text=(
-                    "💰 НОВАЯ ОПЛАТА\n"
-                    "━━━━━━━━━━━━━━━━━━━━\n"
-                    f"👤 Пользователь: {user.first_name}\n"
-                    f"🆔 Telegram ID: {user.id}\n"
-                    f"📦 Проект: {project_name}\n"
-                    f"🪙 Сумма: {payment.total_amount} ⭐\n"
-                    f"🧾 Charge ID: "
-                    f"{payment.telegram_payment_charge_id}"
-                )
+                text=admin_text
             )
 
         except Exception as error:
 
             print(
-                "Не удалось отправить уведомление админу: "
-                f"{error}"
+                "Ошибка уведомления админу:",
+                error
             )
 
 
@@ -878,14 +1300,14 @@ def run():
         )
     )
 
-    # Кнопки
+    # Inline-кнопки
     app.add_handler(
         CallbackQueryHandler(
             buttons
         )
     )
 
-    # Telegram Stars
+    # Pre-checkout
     app.add_handler(
         PreCheckoutQueryHandler(
             precheckout_callback
