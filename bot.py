@@ -1,6 +1,11 @@
 import os
 import json
 import threading
+import shutil
+import zipfile
+import subprocess
+from pathlib import Path
+from ftplib import FTP
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
 from telegram import (
@@ -19,6 +24,7 @@ from telegram.ext import (
     filters,
 )
 
+
 # =====================================================
 # НАСТРОЙКИ
 # =====================================================
@@ -29,9 +35,21 @@ ADMIN_ID = 8999035301
 
 DATA_FILE = "svoyak_data.json"
 
+BASE_DIR = Path("svoyak_builds")
+ADMIN_FILES_DIR = Path("admin_files")
+
+MOD_FILE = ADMIN_FILES_DIR / "clean_mod.zip"
+SQL_FILE = ADMIN_FILES_DIR / "svoyak.sql"
+LIB_FILE = ADMIN_FILES_DIR / "libsvoyak.so"
+
+BUILD_SCRIPT = Path("build_client.sh")
+
+BASE_DIR.mkdir(exist_ok=True)
+ADMIN_FILES_DIR.mkdir(exist_ok=True)
+
 
 # =====================================================
-# БАЗА ДАННЫХ JSON
+# JSON
 # =====================================================
 
 def load_data():
@@ -39,7 +57,8 @@ def load_data():
     if not os.path.exists(DATA_FILE):
 
         return {
-            "users": {}
+            "users": {},
+            "builds": {}
         }
 
     try:
@@ -55,19 +74,27 @@ def load_data():
         if "users" not in data:
             data["users"] = {}
 
+        if "builds" not in data:
+            data["builds"] = {}
+
         return data
 
-    except Exception:
+    except Exception as error:
+
+        print("Ошибка чтения JSON:", error)
 
         return {
-            "users": {}
+            "users": {},
+            "builds": {}
         }
 
 
 def save_data(data):
 
+    temp_file = DATA_FILE + ".tmp"
+
     with open(
-        DATA_FILE,
+        temp_file,
         "w",
         encoding="utf-8"
     ) as file:
@@ -78,6 +105,11 @@ def save_data(data):
             ensure_ascii=False,
             indent=4
         )
+
+    os.replace(
+        temp_file,
+        DATA_FILE
+    )
 
 
 def get_user(data, user_id):
@@ -96,14 +128,21 @@ def get_user(data, user_id):
             "yesterday_profit": 0,
             "today_profit": 0,
             "referrals": [],
-            "has_purchased": False
+            "has_purchased": False,
+
+            "free_build": None
         }
 
-    return data["users"][user_id]
+    user = data["users"][user_id]
+
+    if "free_build" not in user:
+        user["free_build"] = None
+
+    return user
 
 
 # =====================================================
-# WEB-СЕРВЕР RENDER
+# RENDER WEB SERVER
 # =====================================================
 
 class HealthHandler(BaseHTTPRequestHandler):
@@ -153,14 +192,13 @@ def run_web_server():
 
 def main_menu():
 
-    keyboard = [
+    return InlineKeyboardMarkup([
 
         [
             InlineKeyboardButton(
                 "🛒 Магазин",
                 callback_data="shop"
             ),
-
             InlineKeyboardButton(
                 "🆓 Бесплатный проект",
                 callback_data="free"
@@ -172,7 +210,6 @@ def main_menu():
                 "🔨 Собрать проект",
                 callback_data="build"
             ),
-
             InlineKeyboardButton(
                 "📁 Мои проекты",
                 callback_data="projects"
@@ -184,183 +221,10 @@ def main_menu():
                 "🆘 Поддержка",
                 callback_data="support"
             ),
-
             InlineKeyboardButton(
                 "🤝 Партнёрка",
                 callback_data="partner"
             ),
-        ],
-
-    ]
-
-    return InlineKeyboardMarkup(
-        keyboard
-    )
-
-
-# =====================================================
-# МАГАЗИН
-# =====================================================
-
-def shop_menu():
-
-    keyboard = [
-
-        [
-            InlineKeyboardButton(
-                "📦 Проекты",
-                callback_data="shop_projects"
-            )
-        ],
-
-        [
-            InlineKeyboardButton(
-                "📢 Реклама в канале",
-                callback_data="shop_ads"
-            )
-        ],
-
-        [
-            InlineKeyboardButton(
-                "🏠 Главное меню",
-                callback_data="main_menu"
-            )
-        ],
-
-    ]
-
-    return InlineKeyboardMarkup(
-        keyboard
-    )
-
-
-# =====================================================
-# ПРОЕКТЫ
-# =====================================================
-
-def projects_menu():
-
-    keyboard = [
-
-        [
-            InlineKeyboardButton(
-                "📦 BLACK RUSSIA PRO · ⭐️ 200",
-                callback_data="project_pro"
-            )
-        ],
-
-        [
-            InlineKeyboardButton(
-                "🎁 BLACK RUSSIA ULTIMATE v2.2 · ⭐️ 500",
-                callback_data="project_ultimate"
-            )
-        ],
-
-        [
-            InlineKeyboardButton(
-                "👁 PRO ИЛИ ULTIMATE v2.2",
-                callback_data="project_compare"
-            )
-        ],
-
-        [
-            InlineKeyboardButton(
-                "◀️ Назад",
-                callback_data="shop"
-            )
-        ],
-
-    ]
-
-    return InlineKeyboardMarkup(
-        keyboard
-    )
-
-
-# =====================================================
-# PRO МЕНЮ
-# =====================================================
-
-def pro_menu():
-
-    return InlineKeyboardMarkup([
-
-        [
-            InlineKeyboardButton(
-                "🪙 TELEGRAM STARS · 200",
-                callback_data="buy_pro"
-            )
-        ],
-
-        [
-            InlineKeyboardButton(
-                "◀️ Назад к проектам",
-                callback_data="shop_projects"
-            )
-        ],
-
-        [
-            InlineKeyboardButton(
-                "🏠 Главное меню",
-                callback_data="main_menu"
-            )
-        ],
-
-    ])
-
-
-# =====================================================
-# ULTIMATE МЕНЮ
-# =====================================================
-
-def ultimate_menu():
-
-    return InlineKeyboardMarkup([
-
-        [
-            InlineKeyboardButton(
-                "🪙 TELEGRAM STARS · 500",
-                callback_data="buy_ultimate"
-            )
-        ],
-
-        [
-            InlineKeyboardButton(
-                "◀️ Назад к проектам",
-                callback_data="shop_projects"
-            )
-        ],
-
-        [
-            InlineKeyboardButton(
-                "🏠 Главное меню",
-                callback_data="main_menu"
-            )
-        ],
-
-    ])
-
-
-# =====================================================
-# СРАВНЕНИЕ
-# =====================================================
-
-def compare_menu():
-
-    return InlineKeyboardMarkup([
-
-        [
-            InlineKeyboardButton(
-                "◀️ Назад к проектам",
-                callback_data="shop_projects"
-            )
-        ],
-
-        [
-            InlineKeyboardButton(
-                "🏠 Главное меню",
-                callback_data="main_menu"
-            )
         ],
 
     ])
@@ -394,31 +258,136 @@ def back_menu(
 
 
 # =====================================================
-# ПОДДЕРЖКА
+# SHOP
 # =====================================================
 
-def support_menu():
+def shop_menu():
 
     return InlineKeyboardMarkup([
 
         [
             InlineKeyboardButton(
-                "💬 Написать в поддержку",
-                url="https://t.me/svoyak_support_bot"
+                "📦 Проекты",
+                callback_data="shop_projects"
             )
         ],
 
         [
             InlineKeyboardButton(
-                "📄 Пользовательское соглашение",
-                url="https://telegra.ph/Polzovatelskoe-soglashenie-SVOYAK-09-05-2"
+                "📢 Реклама в канале",
+                callback_data="shop_ads"
             )
         ],
 
         [
             InlineKeyboardButton(
-                "🔐 Политика конфиденциальности",
-                url="https://telegra.ph/SVOYAK--Politika-konfidencialnosti-09-05"
+                "🏠 Главное меню",
+                callback_data="main_menu"
+            )
+        ],
+
+    ])
+
+
+def projects_menu():
+
+    return InlineKeyboardMarkup([
+
+        [
+            InlineKeyboardButton(
+                "📦 BLACK RUSSIA PRO · ⭐️ 200",
+                callback_data="project_pro"
+            )
+        ],
+
+        [
+            InlineKeyboardButton(
+                "🎁 BLACK RUSSIA ULTIMATE v2.2 · ⭐️ 500",
+                callback_data="project_ultimate"
+            )
+        ],
+
+        [
+            InlineKeyboardButton(
+                "👁 PRO ИЛИ ULTIMATE v2.2",
+                callback_data="project_compare"
+            )
+        ],
+
+        [
+            InlineKeyboardButton(
+                "◀️ Назад",
+                callback_data="shop"
+            )
+        ],
+
+    ])
+
+
+def pro_menu():
+
+    return InlineKeyboardMarkup([
+
+        [
+            InlineKeyboardButton(
+                "🪙 TELEGRAM STARS · 200",
+                callback_data="buy_pro"
+            )
+        ],
+
+        [
+            InlineKeyboardButton(
+                "◀️ Назад к проектам",
+                callback_data="shop_projects"
+            )
+        ],
+
+        [
+            InlineKeyboardButton(
+                "🏠 Главное меню",
+                callback_data="main_menu"
+            )
+        ],
+
+    ])
+
+
+def ultimate_menu():
+
+    return InlineKeyboardMarkup([
+
+        [
+            InlineKeyboardButton(
+                "🪙 TELEGRAM STARS · 500",
+                callback_data="buy_ultimate"
+            )
+        ],
+
+        [
+            InlineKeyboardButton(
+                "◀️ Назад к проектам",
+                callback_data="shop_projects"
+            )
+        ],
+
+        [
+            InlineKeyboardButton(
+                "🏠 Главное меню",
+                callback_data="main_menu"
+            )
+        ],
+
+    ])
+
+
+def compare_menu():
+
+    return InlineKeyboardMarkup([
+
+        [
+            InlineKeyboardButton(
+                "◀️ Назад к проектам",
+                callback_data="shop_projects"
             )
         ],
 
@@ -433,7 +402,56 @@ def support_menu():
 
 
 # =====================================================
-# ПАРТНЁРСКАЯ ПРОГРАММА
+# SUPPORT
+# =====================================================
+
+async def show_support(query):
+
+    text = (
+        "🆘 ПОДДЕРЖКА\n"
+        "━━━━━━━━━━━━━━━━━━━━\n\n"
+        "Если у тебя возник вопрос по проекту, "
+        "сборке или работе SVOYAK — обратись в поддержку."
+    )
+
+    await query.edit_message_text(
+        text,
+        reply_markup=InlineKeyboardMarkup([
+
+            [
+                InlineKeyboardButton(
+                    "💬 Написать в поддержку",
+                    url="https://t.me/svoyak_support_bot"
+                )
+            ],
+
+            [
+                InlineKeyboardButton(
+                    "📄 Пользовательское соглашение",
+                    url="https://telegra.ph/Polzovatelskoe-soglashenie-SVOYAK-09-05-2"
+                )
+            ],
+
+            [
+                InlineKeyboardButton(
+                    "🔐 Политика конфиденциальности",
+                    url="https://telegra.ph/SVOYAK--Politika-konfidencialnosti-09-05"
+                )
+            ],
+
+            [
+                InlineKeyboardButton(
+                    "🏠 Главное меню",
+                    callback_data="main_menu"
+                )
+            ],
+
+        ])
+    )
+
+
+# =====================================================
+# PARTNER
 # =====================================================
 
 async def show_partner(
@@ -450,13 +468,10 @@ async def show_partner(
         user_id
     )
 
-    # Получаем username бота автоматически
     bot_info = await context.bot.get_me()
 
-    bot_username = bot_info.username
-
     referral_link = (
-        f"https://t.me/{bot_username}"
+        f"https://t.me/{bot_info.username}"
         f"?start=ref_{user_id}"
     )
 
@@ -491,32 +506,30 @@ async def show_partner(
         "это защита от накрутки. Приглашённые уже засчитываются."
     )
 
-    keyboard = InlineKeyboardMarkup([
-
-        [
-            InlineKeyboardButton(
-                "🛒 Магазин",
-                callback_data="shop"
-            )
-        ],
-
-        [
-            InlineKeyboardButton(
-                "🏠 Главное меню",
-                callback_data="main_menu"
-            )
-        ],
-
-    ])
-
     await query.edit_message_text(
         text,
-        reply_markup=keyboard
+        reply_markup=InlineKeyboardMarkup([
+
+            [
+                InlineKeyboardButton(
+                    "🛒 Магазин",
+                    callback_data="shop"
+                )
+            ],
+
+            [
+                InlineKeyboardButton(
+                    "🏠 Главное меню",
+                    callback_data="main_menu"
+                )
+            ],
+
+        ])
     )
 
 
 # =====================================================
-# МОИ ПРОЕКТЫ
+# MY PROJECTS
 # =====================================================
 
 async def show_projects(query):
@@ -539,11 +552,55 @@ async def show_projects(query):
             "📁 МОИ ПРОЕКТЫ\n"
             "━━━━━━━━━━━━━━━━━━━━\n\n"
             "У тебя пока нет созданных проектов.\n\n"
-            "Выбери BLACK RUSSIA PRO или "
-            "ULTIMATE v2.2 в магазине."
+            "Выбери BLACK RUSSIA PRO или ULTIMATE v2.2 в магазине."
         )
 
-        keyboard = InlineKeyboardMarkup([
+        await query.edit_message_text(
+            text,
+            reply_markup=InlineKeyboardMarkup([
+
+                [
+                    InlineKeyboardButton(
+                        "🛒 Магазин",
+                        callback_data="shop"
+                    )
+                ],
+
+                [
+                    InlineKeyboardButton(
+                        "🏠 Главное меню",
+                        callback_data="main_menu"
+                    )
+                ],
+
+            ])
+        )
+
+        return
+
+    text = (
+        "📁 МОИ ПРОЕКТЫ\n"
+        "━━━━━━━━━━━━━━━━━━━━\n\n"
+        "Твои проекты:\n\n"
+    )
+
+    for index, project in enumerate(
+        projects,
+        1
+    ):
+
+        text += f"📦 {index}. {project}\n"
+
+    await query.edit_message_text(
+        text,
+        reply_markup=InlineKeyboardMarkup([
+
+            [
+                InlineKeyboardButton(
+                    "🔨 Собрать проект",
+                    callback_data="build"
+                )
+            ],
 
             [
                 InlineKeyboardButton(
@@ -560,47 +617,1310 @@ async def show_projects(query):
             ],
 
         ])
+    )
 
-        await query.edit_message_text(
-            text,
-            reply_markup=keyboard
+
+# =====================================================
+# FREE BUILD
+# =====================================================
+
+def free_build_start():
+
+    return (
+        "🛠 Новая сборка проекта\n\n"
+        "Я настрою клиентскую библиотеку, подготовлю "
+        "чистый мод и при необходимости загружу его на FTP.\n\n"
+        "Шаг 1 из 7 — игровой сервер\n"
+        "Отправь IP и порт в формате:\n"
+        "80.242.59.112:6793"
+    )
+
+
+async def start_free_build(
+    query
+):
+
+    data = load_data()
+
+    user = get_user(
+        data,
+        query.from_user.id
+    )
+
+    user["free_build"] = {
+        "step": 1,
+        "server": None,
+        "project_name": None,
+        "bonuses": None,
+        "links": None,
+        "owner": None,
+        "mysql": None,
+        "ftp": None,
+        "status": "collecting"
+    }
+
+    save_data(data)
+
+    await query.edit_message_text(
+        free_build_start(),
+        reply_markup=InlineKeyboardMarkup([
+            [
+                InlineKeyboardButton(
+                    "🏠 Главное меню",
+                    callback_data="main_menu"
+                )
+            ]
+        ])
+    )
+
+
+def valid_server(value):
+
+    if ":" not in value:
+        return None
+
+    ip, port = value.rsplit(
+        ":",
+        1
+    )
+
+    ip = ip.strip()
+    port = port.strip()
+
+    if not ip:
+        return None
+
+    try:
+        port_number = int(port)
+    except ValueError:
+        return None
+
+    if port_number < 1 or port_number > 65535:
+        return None
+
+    return {
+        "ip": ip,
+        "port": port_number,
+        "address": f"{ip}:{port_number}"
+    }
+
+
+def parse_bonuses(value):
+
+    parts = value.split()
+
+    if len(parts) != 4:
+        return None
+
+    try:
+
+        numbers = [
+            int(item)
+            for item in parts
+        ]
+
+    except ValueError:
+
+        return None
+
+    if any(
+        number < 0
+        for number in numbers
+    ):
+        return None
+
+    return {
+        "donate": numbers[0],
+        "money": numbers[1],
+        "vip": numbers[2],
+        "level": numbers[3]
+    }
+
+
+def parse_links(value):
+
+    parts = value.split()
+
+    if len(parts) != 3:
+        return None
+
+    return {
+        "telegram": parts[0],
+        "vk": parts[1],
+        "website": parts[2]
+    }
+
+
+def parse_mysql(value):
+
+    parts = value.split()
+
+    if len(parts) < 4:
+        return None
+
+    database = parts[-1]
+    password = parts[-2]
+    username = parts[-3]
+    host = " ".join(parts[:-3])
+
+    if not host or not username or not database:
+        return None
+
+    return {
+        "host": host,
+        "username": username,
+        "password": password,
+        "database": database
+    }
+
+
+def parse_ftp(value):
+
+    parts = value.split()
+
+    if len(parts) != 3:
+        return None
+
+    address = parts[0]
+    login = parts[1]
+    password = parts[2]
+
+    if ":" not in address:
+        return None
+
+    ip, port = address.rsplit(
+        ":",
+        1
+    )
+
+    try:
+        port = int(port)
+    except ValueError:
+        return None
+
+    if not ip or port < 1 or port > 65535:
+        return None
+
+    return {
+        "ip": ip,
+        "port": port,
+        "login": login,
+        "password": password
+    }
+
+
+# =====================================================
+# FREE BUILD MESSAGE HANDLER
+# =====================================================
+
+async def free_build_message(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE
+):
+
+    if not update.message:
+        return
+
+    data = load_data()
+
+    user_id = update.effective_user.id
+
+    user = get_user(
+        data,
+        user_id
+    )
+
+    build = user.get(
+        "free_build"
+    )
+
+    if not build:
+        return
+
+    if build.get("status") != "collecting":
+        return
+
+    step = build.get(
+        "step",
+        1
+    )
+
+    value = update.message.text.strip()
+
+    # =================================================
+    # STEP 1
+    # =================================================
+
+    if step == 1:
+
+        server = valid_server(value)
+
+        if not server:
+
+            await update.message.reply_text(
+                "❌ Неверный формат.\n\n"
+                "Отправь IP и порт так:\n"
+                "80.242.59.112:6793"
+            )
+
+            return
+
+        build["server"] = server
+
+        build["step"] = 2
+
+        save_data(data)
+
+        await update.message.reply_text(
+            "Адрес сервера сохранён.\n\n"
+            "Шаг 2 из 7 — название проекта\n"
+            "Оно будет указано одновременно в клиентском "
+            "hooks.cpp и параметре nameserver чистого мода.\n"
+            "Пример: TEST SVOYAK"
         )
 
         return
 
-    text = (
-        "📁 МОИ ПРОЕКТЫ\n"
-        "━━━━━━━━━━━━━━━━━━━━\n\n"
-        "Твои проекты:\n\n"
-    )
+    # =================================================
+    # STEP 2
+    # =================================================
 
-    for index, project in enumerate(
-        projects,
-        1
-    ):
+    if step == 2:
 
-        text += (
-            f"📦 {index}. {project}\n"
+        if not value:
+
+            await update.message.reply_text(
+                "❌ Название проекта не может быть пустым."
+            )
+
+            return
+
+        build["project_name"] = value
+
+        build["step"] = 3
+
+        save_data(data)
+
+        await update.message.reply_text(
+            "Название проекта сохранено.\n\n"
+            "Шаг 3 из 7 — стартовые бонусы\n"
+            "Отправь четыре числа одной строкой:\n"
+            "донат деньги VIP уровень\n\n"
+            "Пример:\n"
+            "10000 80000000 1 1"
         )
 
-    text += (
-        "\n🔨 Проект можно открыть "
-        "после перехода в студию сборки."
+        return
+
+    # =================================================
+    # STEP 3
+    # =================================================
+
+    if step == 3:
+
+        bonuses = parse_bonuses(
+            value
+        )
+
+        if not bonuses:
+
+            await update.message.reply_text(
+                "❌ Нужно отправить ровно четыре числа.\n\n"
+                "Пример:\n"
+                "10000 80000000 1 1"
+            )
+
+            return
+
+        build["bonuses"] = bonuses
+
+        build["step"] = 4
+
+        save_data(data)
+
+        await update.message.reply_text(
+            "Стартовые бонусы сохранены.\n\n"
+            "Шаг 4 из 7 — ссылки проекта\n"
+            "Отправь Telegram, VK и сайт через пробел:\n"
+            "t.me/myproject vk.com/myproject myproject.ru\n\n"
+            "Если какой-то ссылки нет, укажи вместо неё -."
+        )
+
+        return
+
+    # =================================================
+    # STEP 4
+    # =================================================
+
+    if step == 4:
+
+        links = parse_links(
+            value
+        )
+
+        if not links:
+
+            await update.message.reply_text(
+                "❌ Нужно указать три значения через пробел.\n\n"
+                "Пример:\n"
+                "t.me/myproject vk.com/myproject myproject.ru\n\n"
+                "Если ссылки нет — используй -."
+            )
+
+            return
+
+        build["links"] = links
+
+        build["step"] = 5
+
+        save_data(data)
+
+        await update.message.reply_text(
+            "Ссылки проекта сохранены.\n\n"
+            "Шаг 5 из 7 — владелец проекта\n"
+            "Отправь точный игровой ник владельца.\n"
+            "Пример: Test_Svoyak\n\n"
+            "👑 Этот ник получит доступ к скрытым FULL-командам "
+            "и 13-й уровень администратора после импорта svoyak.sql."
+        )
+
+        return
+
+    # =================================================
+    # STEP 5
+    # =================================================
+
+    if step == 5:
+
+        if not value:
+
+            await update.message.reply_text(
+                "❌ Ник владельца не может быть пустым."
+            )
+
+            return
+
+        build["owner"] = value
+
+        build["step"] = 6
+
+        save_data(data)
+
+        await update.message.reply_text(
+            "Ник владельца сохранён.\n\n"
+            "Шаг 6 из 7 — база данных MySQL\n"
+            "Отправь четыре значения одной строкой:\n"
+            "host username password database\n\n"
+            "Пример:\n"
+            "127.0.0.1 game_user strong_password game_db\n\n"
+            "Эти данные будут записаны в настройки будущего "
+            "игрового сервера.\n"
+            "Бот к базе не подключается: готовый SQL нужно будет "
+            "импортировать вручную.\n\n"
+            "Если в пароле есть пробелы — просто отправь как есть, "
+            "имя базы должно быть последним.\n"
+            "🔐 Сообщение с паролем бот удалит сразу после чтения."
+        )
+
+        return
+
+    # =================================================
+    # STEP 6
+    # =================================================
+
+    if step == 6:
+
+        mysql = parse_mysql(
+            value
+        )
+
+        if not mysql:
+
+            await update.message.reply_text(
+                "❌ Не удалось разобрать настройки MySQL.\n\n"
+                "Формат:\n"
+                "host username password database\n\n"
+                "Пример:\n"
+                "127.0.0.1 game_user strong_password game_db"
+            )
+
+            return
+
+        build["mysql"] = mysql
+
+        build["step"] = 7
+
+        save_data(data)
+
+        # Удаляем сообщение пользователя
+        try:
+
+            await update.message.delete()
+
+        except Exception as error:
+
+            print(
+                "Не удалось удалить MySQL сообщение:",
+                error
+            )
+
+        await context.bot.send_message(
+            chat_id=user_id,
+            text=(
+                "• Настройки MySQL приняты, сообщение с паролем удалено.\n\n"
+                "Бот не подключается к базе и не импортирует её автоматически. "
+                "Готовый laird.sql получишь после сборки.\n\n"
+                "Шаг 7 из 7 — загрузка мода\n"
+                "Отправь доступ к FTP одной строкой:\n"
+                "IP:PORT login password\n"
+                "Пример: 185.10.20.30:21 mylogin mypassword\n\n"
+                "⚠️ Порт обязателен — бот больше не подставляет 21 автоматически.\n\n"
+                "📁 Чистый мод, включая svoyak.sql, будет загружен прямо "
+                "в корень FTP.\n"
+                "После сборки импортируй svoyak.sql в указанную базу вручную.\n"
+                "🔐 Сообщение с доступом также будет удалено.\n\n"
+                "Если загрузка не нужна, отправь пропустить."
+            )
+        )
+
+        return
+
+    # =================================================
+    # STEP 7
+    # =================================================
+
+    if step == 7:
+
+        if value.lower() == "пропустить":
+
+            build["ftp"] = None
+
+            build["step"] = 8
+
+            build["status"] = "waiting_build"
+
+            save_data(data)
+
+            await update.message.reply_text(
+                "FTP-загрузка отключена.\n\n"
+                "⏳ Все настройки получены.\n"
+                "Добавляю проект в очередь сборки..."
+            )
+
+            await create_build(
+                update,
+                context,
+                data,
+                user
+            )
+
+            return
+
+        ftp = parse_ftp(
+            value
+        )
+
+        if not ftp:
+
+            await update.message.reply_text(
+                "❌ Неверный формат FTP.\n\n"
+                "Нужно:\n"
+                "IP:PORT login password\n\n"
+                "Пример:\n"
+                "185.10.20.30:21 mylogin mypassword\n\n"
+                "Или отправь:\n"
+                "пропустить"
+            )
+
+            return
+
+        build["ftp"] = ftp
+
+        build["step"] = 8
+
+        build["status"] = "waiting_build"
+
+        save_data(data)
+
+        try:
+
+            await update.message.delete()
+
+        except Exception as error:
+
+            print(
+                "Не удалось удалить FTP сообщение:",
+                error
+            )
+
+        await context.bot.send_message(
+            chat_id=user_id,
+            text=(
+                "🔐 Сообщение с доступом к FTP удалено.\n\n"
+                "⏳ Все настройки получены.\n"
+                "Добавляю проект в очередь сборки..."
+            )
+        )
+
+        await create_build(
+            update,
+            context,
+            data,
+            user
+        )
+
+
+# =====================================================
+# BUILD
+# =====================================================
+
+def replace_in_file(
+    file_path,
+    replacements
+):
+
+    try:
+
+        text = file_path.read_text(
+            encoding="utf-8"
+        )
+
+    except Exception:
+
+        return False
+
+    changed = False
+
+    for old, new in replacements.items():
+
+        if old in text:
+
+            text = text.replace(
+                old,
+                new
+            )
+
+            changed = True
+
+    if changed:
+
+        file_path.write_text(
+            text,
+            encoding="utf-8"
+        )
+
+    return changed
+
+
+def prepare_mod(
+    build,
+    build_dir
+):
+
+    mod_dir = build_dir / "mod"
+
+    mod_dir.mkdir(
+        exist_ok=True
     )
 
-    keyboard = InlineKeyboardMarkup([
+    if MOD_FILE.exists():
+
+        try:
+
+            with zipfile.ZipFile(
+                MOD_FILE,
+                "r"
+            ) as archive:
+
+                archive.extractall(
+                    mod_dir
+                )
+
+        except Exception as error:
+
+            print(
+                "Ошибка распаковки мода:",
+                error
+            )
+
+            return False
+
+    else:
+
+        print(
+            "clean_mod.zip отсутствует"
+        )
+
+    project_name = build["project_name"]
+
+    mysql = build["mysql"]
+
+    replacements = {
+
+        "YOUR_PROJECT_NAME": project_name,
+        "{{PROJECT_NAME}}": project_name,
+        "TEST SVOYAK": project_name,
+
+        "YOUR_DB_HOST": mysql["host"],
+        "{{DB_HOST}}": mysql["host"],
+
+        "YOUR_DB_USER": mysql["username"],
+        "{{DB_USER}}": mysql["username"],
+
+        "YOUR_DB_PASSWORD": mysql["password"],
+        "{{DB_PASSWORD}}": mysql["password"],
+
+        "YOUR_DB_NAME": mysql["database"],
+        "{{DB_NAME}}": mysql["database"],
+
+        "YOUR_OWNER_NICK": build["owner"],
+        "{{OWNER_NICK}}": build["owner"],
+    }
+
+    for file_path in mod_dir.rglob("*"):
+
+        if not file_path.is_file():
+            continue
+
+        if file_path.suffix.lower() not in (
+            ".cpp",
+            ".h",
+            ".inc",
+            ".pwn",
+            ".cfg",
+            ".ini",
+            ".json",
+            ".txt",
+            ".sql",
+            ".xml",
+            ".gradle"
+        ):
+            continue
+
+        replace_in_file(
+            file_path,
+            replacements
+        )
+
+    return True
+
+
+def generate_sql(
+    build,
+    build_dir
+):
+
+    output = build_dir / "svoyak.sql"
+
+    if SQL_FILE.exists():
+
+        try:
+
+            shutil.copy2(
+                SQL_FILE,
+                output
+            )
+
+        except Exception as error:
+
+            print(
+                "Ошибка копирования SQL:",
+                error
+            )
+
+            return None
+
+    else:
+
+        output.write_text(
+            "-- SVOYAK SQL\n",
+            encoding="utf-8"
+        )
+
+    replacements = {
+
+        "YOUR_DB_HOST": build["mysql"]["host"],
+        "{{DB_HOST}}": build["mysql"]["host"],
+
+        "YOUR_DB_USER": build["mysql"]["username"],
+        "{{DB_USER}}": build["mysql"]["username"],
+
+        "YOUR_DB_PASSWORD": build["mysql"]["password"],
+        "{{DB_PASSWORD}}": build["mysql"]["password"],
+
+        "YOUR_DB_NAME": build["mysql"]["database"],
+        "{{DB_NAME}}": build["mysql"]["database"],
+
+        "YOUR_OWNER_NICK": build["owner"],
+        "{{OWNER_NICK}}": build["owner"],
+    }
+
+    replace_in_file(
+        output,
+        replacements
+    )
+
+    return output
+
+
+def build_client(
+    build,
+    build_dir
+):
+
+    output = build_dir / "libsvoyak.so"
+
+    # Если админ уже загрузил готовую библиотеку
+    if LIB_FILE.exists():
+
+        try:
+
+            shutil.copy2(
+                LIB_FILE,
+                output
+            )
+
+            return output
+
+        except Exception as error:
+
+            print(
+                "Ошибка копирования libsvoyak.so:",
+                error
+            )
+
+    # Автоматическая сборка через build_client.sh
+    if BUILD_SCRIPT.exists():
+
+        try:
+
+            result = subprocess.run(
+                [
+                    "bash",
+                    str(BUILD_SCRIPT)
+                ],
+                cwd=str(
+                    build_dir
+                ),
+                capture_output=True,
+                text=True,
+                timeout=900
+            )
+
+            print(
+                "BUILD STDOUT:",
+                result.stdout
+            )
+
+            print(
+                "BUILD STDERR:",
+                result.stderr
+            )
+
+            if result.returncode == 0:
+
+                candidates = [
+                    build_dir / "libsvoyak.so",
+                    build_dir / "build" / "libsvoyak.so",
+                    build_dir / "output" / "libsvoyak.so",
+                ]
+
+                for candidate in candidates:
+
+                    if candidate.exists():
+
+                        if candidate != output:
+
+                            shutil.copy2(
+                                candidate,
+                                output
+                            )
+
+                        return output
+
+        except Exception as error:
+
+            print(
+                "Ошибка сборки клиента:",
+                error
+            )
+
+    return None
+
+
+# =====================================================
+# FTP
+# =====================================================
+
+def upload_ftp(
+    ftp_config,
+    local_dir
+):
+
+    if not ftp_config:
+        return True
+
+    ftp = FTP()
+
+    try:
+
+        ftp.connect(
+            ftp_config["ip"],
+            ftp_config["port"],
+            timeout=30
+        )
+
+        ftp.login(
+            ftp_config["login"],
+            ftp_config["password"]
+        )
+
+        def upload_directory(
+            current_local,
+            current_remote
+        ):
+
+            try:
+
+                ftp.cwd(
+                    current_remote
+                )
+
+            except Exception:
+
+                ftp.mkd(
+                    current_remote
+                )
+
+                ftp.cwd(
+                    current_remote
+                )
+
+            for item in Path(
+                current_local
+            ).iterdir():
+
+                if item.is_dir():
+
+                    upload_directory(
+                        item,
+                        item.name
+                    )
+
+                    ftp.cwd("..")
+
+                else:
+
+                    with open(
+                        item,
+                        "rb"
+                    ) as file:
+
+                        ftp.storbinary(
+                            f"STOR {item.name}",
+                            file
+                        )
+
+        ftp.cwd("/")
+
+        for item in Path(
+            local_dir
+        ).iterdir():
+
+            if item.is_dir():
+
+                try:
+
+                    ftp.mkd(
+                        item.name
+                    )
+
+                except Exception:
+
+                    pass
+
+                ftp.cwd(
+                    item.name
+                )
+
+                for subitem in item.rglob("*"):
+
+                    if subitem.is_file():
+
+                        relative = subitem.relative_to(
+                            item
+                        )
+
+                        parts = relative.parts
+
+                        current = "."
+
+                        for folder in parts[:-1]:
+
+                            try:
+
+                                ftp.mkd(
+                                    folder
+                                )
+                            except Exception:
+                                pass
+
+                            ftp.cwd(
+                                folder
+                            )
+
+                        with open(
+                            subitem,
+                            "rb"
+                        ) as file:
+
+                            ftp.storbinary(
+                                f"STOR {parts[-1]}",
+                                file
+                            )
+
+                        for _ in parts[:-1]:
+
+                            ftp.cwd("..")
+
+                ftp.cwd("..")
+
+            else:
+
+                with open(
+                    item,
+                    "rb"
+                ) as file:
+
+                    ftp.storbinary(
+                        f"STOR {item.name}",
+                        file
+                    )
+
+        ftp.quit()
+
+        return True
+
+    except Exception as error:
+
+        print(
+            "FTP ERROR:",
+            error
+        )
+
+        try:
+            ftp.quit()
+        except Exception:
+            pass
+
+        return False
+
+
+# =====================================================
+# CREATE BUILD
+# =====================================================
+
+async def create_build(
+    update,
+    context,
+    data,
+    user
+):
+
+    user_id = str(
+        update.effective_user.id
+    )
+
+    build = user.get(
+        "free_build"
+    )
+
+    if not build:
+        return
+
+    build_id = (
+        f"{user_id}_"
+        f"{int(__import__('time').time())}"
+    )
+
+    build_dir = BASE_DIR / build_id
+
+    build_dir.mkdir(
+        parents=True,
+        exist_ok=True
+    )
+
+    data["builds"][build_id] = {
+        "user_id": user_id,
+        "project_name": build["project_name"],
+        "status": "building"
+    }
+
+    save_data(data)
+
+    await context.bot.send_message(
+        chat_id=int(user_id),
+        text=(
+            "🔨 СБОРКА ПРОЕКТА\n"
+            "━━━━━━━━━━━━━━━━━━━━\n\n"
+            "⏳ Настройки приняты.\n"
+            "🧰 Подготавливаю чистый мод.\n"
+            "🗄 Формирую svoyak.sql.\n"
+            "📱 Подготавливаю клиентскую библиотеку.\n\n"
+            "Статус: сборка запущена."
+        )
+    )
+
+    # Выполняем тяжёлую работу в отдельном потоке,
+    # чтобы бот не зависал.
+    result = await __import__(
+        "asyncio"
+    ).to_thread(
+        perform_build,
+        build,
+        build_dir
+    )
+
+    status = result.get(
+        "status"
+    )
+
+    data = load_data()
+
+    current_user = get_user(
+        data,
+        int(user_id)
+    )
+
+    if status != "success":
+
+        current_user["free_build"]["status"] = "error"
+
+        data["builds"][build_id]["status"] = "error"
+
+        save_data(data)
+
+        await context.bot.send_message(
+            chat_id=int(user_id),
+            text=(
+                "❌ Сборка не завершена.\n\n"
+                "Администратору отправлена информация об ошибке."
+            )
+        )
+
+        try:
+
+            await context.bot.send_message(
+                chat_id=ADMIN_ID,
+                text=(
+                    "❌ ОШИБКА БЕСПЛАТНОЙ СБОРКИ\n\n"
+                    f"👤 Telegram ID: {user_id}\n"
+                    f"🏷 Проект: {build['project_name']}\n"
+                    f"📁 Build ID: {build_id}\n"
+                    f"📝 Ошибка: {result.get('error', 'unknown')}"
+                )
+            )
+
+        except Exception:
+            pass
+
+        return
+
+    current_user["free_build"]["status"] = "completed"
+
+    data["builds"][build_id]["status"] = "completed"
+
+    if build["project_name"] not in current_user["projects"]:
+
+        current_user["projects"].append(
+            build["project_name"]
+        )
+
+    save_data(data)
+
+    # =================================================
+    # LIBRARY
+    # =================================================
+
+    lib_path = result.get(
+        "lib"
+    )
+
+    if lib_path and os.path.exists(lib_path):
+
+        await context.bot.send_document(
+            chat_id=int(user_id),
+            document=lib_path,
+            caption=(
+                "✅ Клиентская библиотека готова\n\n"
+                f"🏷 Проект: {build['project_name']}\n"
+                f"🌐 Сервер: {build['server']['address']}\n"
+                "🧰 Компилятор: NDK r25c"
+            )
+        )
+
+    # =================================================
+    # SQL
+    # =================================================
+
+    sql_path = result.get(
+        "sql"
+    )
+
+    if sql_path and os.path.exists(sql_path):
+
+        await context.bot.send_document(
+            chat_id=int(user_id),
+            document=sql_path,
+            caption=(
+                "🗄 БАЗА ДАННЫХ ДЛЯ РУЧНОГО ИМПОРТА\n\n"
+                "Файл: svoyak.sql\n"
+                f"База: {build['mysql']['database']}\n"
+                f"👑 Владелец {build['owner']} автоматически "
+                "получит 13-й уровень администратора "
+                "при создании аккаунта.\n\n"
+                "Импортируй этот SQL-файл в свою базу данных вручную."
+            )
+        )
+
+    # =================================================
+    # RESULT
+    # =================================================
+
+    ftp_text = ""
+
+    if build.get("ftp"):
+
+        if result.get("ftp_uploaded"):
+
+            ftp_text = (
+                "\n\n📁 Мод загружен в корень FTP."
+            )
+
+        else:
+
+            ftp_text = (
+                "\n\n⚠️ Сборка готова, но загрузка на FTP "
+                "не удалась."
+            )
+
+    await context.bot.send_message(
+        chat_id=int(user_id),
+        text=(
+            "🎉 СБОРКА ЗАВЕРШЕНА!\n"
+            "━━━━━━━━━━━━━━━━━━━━\n\n"
+            f"🏷 Проект: {build['project_name']}\n"
+            f"🌐 Сервер: {build['server']['address']}\n"
+            "📱 Клиентская библиотека: готова\n"
+            "🗄 SQL: готов\n"
+            f"👑 Владелец: {build['owner']}"
+            f"{ftp_text}\n\n"
+            "Файлы отправлены выше."
+        ),
+        reply_markup=InlineKeyboardMarkup([
+
+            [
+                InlineKeyboardButton(
+                    "📁 Мои проекты",
+                    callback_data="projects"
+                )
+            ],
+
+            [
+                InlineKeyboardButton(
+                    "🏠 Главное меню",
+                    callback_data="main_menu"
+                )
+            ],
+
+        ])
+    )
+
+
+def perform_build(
+    build,
+    build_dir
+):
+
+    try:
+
+        prepare_mod(
+            build,
+            build_dir
+        )
+
+        sql_path = generate_sql(
+            build,
+            build_dir
+        )
+
+        lib_path = build_client(
+            build,
+            build_dir
+        )
+
+        ftp_uploaded = False
+
+        if build.get("ftp"):
+
+            ftp_uploaded = upload_ftp(
+                build["ftp"],
+                build_dir / "mod"
+            )
+
+        return {
+            "status": "success",
+            "sql": str(sql_path) if sql_path else None,
+            "lib": str(lib_path) if lib_path else None,
+            "ftp_uploaded": ftp_uploaded
+        }
+
+    except Exception as error:
+
+        print(
+            "BUILD ERROR:",
+            error
+        )
+
+        return {
+            "status": "error",
+            "error": str(error)
+        }
+
+
+# =====================================================
+# ADMIN PANEL
+# =====================================================
+
+def admin_menu():
+
+    return InlineKeyboardMarkup([
 
         [
             InlineKeyboardButton(
-                "🔨 Собрать проект",
-                callback_data="build"
+                "📦 Загрузить чистый мод",
+                callback_data="admin_mod"
             )
         ],
 
         [
             InlineKeyboardButton(
-                "🛒 Магазин",
-                callback_data="shop"
+                "🗄 Загрузить svoyak.sql",
+                callback_data="admin_sql"
+            )
+        ],
+
+        [
+            InlineKeyboardButton(
+                "📱 Загрузить libsvoyak.so",
+                callback_data="admin_lib"
+            )
+        ],
+
+        [
+            InlineKeyboardButton(
+                "📊 Состояние файлов",
+                callback_data="admin_status"
             )
         ],
 
@@ -613,9 +1933,81 @@ async def show_projects(query):
 
     ])
 
-    await query.edit_message_text(
-        text,
-        reply_markup=keyboard
+
+async def admin_command(
+    update,
+    context
+):
+
+    if update.effective_user.id != ADMIN_ID:
+        return
+
+    context.user_data["admin_upload"] = None
+
+    await update.message.reply_text(
+        "👑 АДМИН-ПАНЕЛЬ\n"
+        "━━━━━━━━━━━━━━━━━━━━\n\n"
+        "Выбери действие:",
+        reply_markup=admin_menu()
+    )
+
+
+async def admin_upload_document(
+    update,
+    context
+):
+
+    if update.effective_user.id != ADMIN_ID:
+        return
+
+    upload_type = context.user_data.get(
+        "admin_upload"
+    )
+
+    if not upload_type:
+        return
+
+    document = update.message.document
+
+    if not document:
+        return
+
+    if upload_type == "mod":
+
+        destination = MOD_FILE
+
+    elif upload_type == "sql":
+
+        destination = SQL_FILE
+
+    elif upload_type == "lib":
+
+        destination = LIB_FILE
+
+    else:
+
+        return
+
+    try:
+
+        await document.get_file().download_to_drive(
+            custom_path=str(destination)
+        )
+
+    except Exception as error:
+
+        await update.message.reply_text(
+            f"❌ Ошибка загрузки: {error}"
+        )
+
+        return
+
+    context.user_data["admin_upload"] = None
+
+    await update.message.reply_text(
+        "✅ Файл успешно загружен.\n\n"
+        f"📁 {destination.name}",
+        reply_markup=admin_menu()
     )
 
 
@@ -637,31 +2029,22 @@ async def start(
         user.id
     )
 
-    # =================================================
-    # РЕФЕРАЛ
-    # =================================================
-
     if context.args:
 
         argument = context.args[0]
 
         if argument.startswith("ref_"):
 
-            ref_id_text = argument[4:]
-
             try:
 
                 ref_id = int(
-                    ref_id_text
+                    argument[4:]
                 )
 
-                # Нельзя пригласить самого себя
                 if ref_id != user.id:
 
-                    # Реферер существует
                     if str(ref_id) in data["users"]:
 
-                        # Только если реферер ещё не назначен
                         if current_user.get(
                             "referrer"
                         ) is None:
@@ -707,7 +2090,7 @@ async def start(
 
 
 # =====================================================
-# КНОПКИ
+# BUTTONS
 # =====================================================
 
 async def buttons(
@@ -720,16 +2103,17 @@ async def buttons(
     await query.answer()
 
     # =================================================
-    # ГЛАВНОЕ МЕНЮ
+    # MAIN
     # =================================================
 
     if query.data == "main_menu":
 
-        user = query.from_user
+        name = (
+            query.from_user.first_name
+            or "пользователь"
+        )
 
-        name = user.first_name or "пользователь"
-
-        text = (
+        await query.edit_message_text(
             f"🙂 {name}, привет!\n\n"
             "Собираю готовый мобильный проект Black Russia "
             "под твой сервер: своё название, свои цвета, "
@@ -739,24 +2123,22 @@ async def buttons(
             "Мод, база данных и приложение устанавливаются "
             "на твой сервер автоматически — тебе нужно только "
             "ответить на вопросы бота.\n\n"
-            "Выбери раздел в меню под строкой ввода."
-        )
-
-        await query.edit_message_text(
-            text,
+            "Выбери раздел в меню под строкой ввода.",
             reply_markup=main_menu()
         )
 
     # =================================================
-    # ПОДДЕРЖКА
+    # SUPPORT
     # =================================================
 
     elif query.data == "support":
 
-        await show_support(query)
+        await show_support(
+            query
+        )
 
     # =================================================
-    # ПАРТНЁРКА
+    # PARTNER
     # =================================================
 
     elif query.data == "partner":
@@ -767,7 +2149,7 @@ async def buttons(
         )
 
     # =================================================
-    # МОИ ПРОЕКТЫ
+    # PROJECTS
     # =================================================
 
     elif query.data == "projects":
@@ -777,50 +2159,29 @@ async def buttons(
         )
 
     # =================================================
-    # МАГАЗИН
+    # SHOP
     # =================================================
 
     elif query.data == "shop":
 
-        text = (
+        await query.edit_message_text(
             "🪙 МАГАЗИН SVOYAK\n"
             "━━━━━━━━━━━━━━━━━━━━\n"
             "В одном месте: готовые игровые проекты, "
             "реклама в канале и услуги для владельцев ULTRA.\n\n"
-            "Выбери нужный раздел ниже. Стоимость в Telegram "
-            "Stars считается по единому курсу магазина.\n\n"
-            "🪙 Автооплата: Telegram Stars.\n"
-            "🔓 После оплаты доступ выдаётся автоматически."
-        )
-
-        await query.edit_message_text(
-            text,
+            "Выбери нужный раздел ниже.",
             reply_markup=shop_menu()
         )
 
-    # =================================================
-    # ПРОЕКТЫ
-    # =================================================
-
     elif query.data == "shop_projects":
 
-        text = (
+        await query.edit_message_text(
             "📦 ПРОЕКТЫ BLACK RUSSIA\n"
             "━━━━━━━━━━━━━━━━━━━━\n"
-            "В магазине два готовых проекта. После оплаты "
-            "заказ закрепляется за твоим Telegram и открывает "
-            "персональную сборку.\n\n"
-            "📦 BLACK RUSSIA PRO · ⭐️ 200\n"
-            "Доработанный проект с упором на тюнинг, "
-            "визуал и быстрый запуск.\n\n"
-            "🎁 BLACK RUSSIA ULTIMATE v2.2 · ⭐️ 500\n"
-            "Расширенная версия PRO с дополнительными системами.\n\n"
-            "🪙 Автооплата: Telegram Stars.\n"
-            "🔓 После оплаты доступ выдаётся автоматически."
-        )
-
-        await query.edit_message_text(
-            text,
+            "В магазине два готовых проекта.\n\n"
+            "📦 BLACK RUSSIA PRO · ⭐️ 200\n\n"
+            "🎁 BLACK RUSSIA ULTIMATE v2.2 · ⭐️ 500\n\n"
+            "🪙 Автооплата: Telegram Stars.",
             reply_markup=projects_menu()
         )
 
@@ -830,27 +2191,12 @@ async def buttons(
 
     elif query.data == "project_pro":
 
-        text = (
+        await query.edit_message_text(
             "📦 BLACK RUSSIA PRO\n"
             "━━━━━━━━━━━━━━━━━━━━\n"
             "⭐️ 200   🕓 сборка ~10 минут\n\n"
-            "Готовый мод с упором на тюнинг и визуал. "
-            "Ставится на твой сервер целиком: мод, база данных "
-            "и приложение.\n\n"
-            "Что внутри\n"
-            "• Стайлинг, тех-центр и шиномонтаж — тюнинг сохраняется\n"
-            "• Радиальное меню, GPS-метки и зелёные зоны\n"
-            "• Кейсы, ревард-система, автосалоны с выбором цвета\n"
-            "• Донат и инвентарь работают полностью\n\n"
-            "Проект остаётся твоим\n"
-            "• Название, цвета, иконка и ID приложения — под тебя\n"
-            "• APK не конфликтует с другими проектами\n"
-            "• Авторство полностью твоё\n\n"
-            "🔓 Доступ откроется сразу после оплаты."
-        )
-
-        await query.edit_message_text(
-            text,
+            "Готовый мод с упором на тюнинг и визуал.\n\n"
+            "🔓 Доступ откроется сразу после оплаты.",
             reply_markup=pro_menu()
         )
 
@@ -860,123 +2206,81 @@ async def buttons(
 
     elif query.data == "project_ultimate":
 
-        text = (
+        await query.edit_message_text(
             "📦 BLACK RUSSIA ULTIMATE v2.2\n"
             "━━━━━━━━━━━━━━━━━━━━\n"
             "⭐️ 500   🕓 сборка ~10 минут\n\n"
-            "Всё из BLACK RUSSIA PRO плюс дополнительные системы.\n\n"
-            "Что добавлено\n"
-            "• Маркетплейс, гаражи и контейнеры\n"
-            "• Аукцион, система трейда и Black Pass\n"
-            "• Блэкджек, кости и система водолаза\n"
-            "• Тюнинг-центры работают как полноценные бизнесы\n\n"
-            "Проект остаётся твоим\n"
-            "• Название, цвета, логотипы, иконка и ID приложения — под тебя\n"
-            "• Персональная лицензия привязывается к твоему серверу\n"
-            "• Авторство полностью твоё\n\n"
-            "🔓 Доступ откроется сразу после оплаты."
-        )
-
-        await query.edit_message_text(
-            text,
+            "Расширенная версия PRO с дополнительными системами.\n\n"
+            "🔓 Доступ откроется сразу после оплаты.",
             reply_markup=ultimate_menu()
         )
 
     # =================================================
-    # СРАВНЕНИЕ
+    # COMPARE
     # =================================================
 
     elif query.data == "project_compare":
 
-        text = (
+        await query.edit_message_text(
             "👁 PRO ИЛИ ULTIMATE v2.2\n"
             "━━━━━━━━━━━━━━━━━━━━\n\n"
             "📦 BLACK RUSSIA PRO · 200 🌟\n"
-            "📦 BLACK RUSSIA ULTIMATE · 500 🌟\n\n"
-            "Одинаково в обоих\n"
-            "• Свой APK: название, цвета, иконка, ID приложения\n"
-            "• Тюнинг-центры, радиальное меню, зелёные зоны, кейсы\n"
-            "• Донат и инвентарь\n"
-            "• Установка мода и базы на твой сервер\n\n"
-            "Только в ULTIMATE v2.2\n"
-            "• Маркетплейс, гаражи, контейнеры\n"
-            "• Аукцион, трейд, Black Pass\n"
-            "• Блэкджек, кости, водолаз\n"
-            "• Тюнинг-центры как бизнесы\n"
-            "• Оптимизация под высокий онлайн\n\n"
-            "ℹ Начинаешь и хочешь просто запуститься — бери PRO.\n"
-            "Планируешь большой проект с экономикой — ULTIMATE v2.2."
-        )
-
-        await query.edit_message_text(
-            text,
+            "📦 BLACK RUSSIA ULTIMATE · 500 🌟",
             reply_markup=compare_menu()
         )
 
     # =================================================
-    # БЕСПЛАТНЫЙ ПРОЕКТ
+    # FREE
     # =================================================
 
     elif query.data == "free":
 
-        await query.edit_message_text(
-            "🆓 БЕСПЛАТНЫЙ ПРОЕКТ\n\n"
-            "Здесь появится бесплатный проект.",
-            reply_markup=back_menu()
+        await start_free_build(
+            query
         )
 
     # =================================================
-    # СОБРАТЬ ПРОЕКТ
+    # BUILD
     # =================================================
 
     elif query.data == "build":
 
-        text = (
+        await query.edit_message_text(
             "🔨 СБОРКА ПРОЕКТА\n"
             "━━━━━━━━━━━━━━━━━━━━\n"
             "Оплаченных запусков пока нет.\n\n"
             "Купи BLACK RUSSIA PRO или ULTIMATE v2.2 — "
             "и студия откроется сразу после оплаты. "
             "Бесплатная сборка доступна кнопкой "
-            "«Бесплатный проект» в меню."
-        )
+            "«Бесплатный проект» в меню.",
+            reply_markup=InlineKeyboardMarkup([
 
-        keyboard = InlineKeyboardMarkup([
+                [
+                    InlineKeyboardButton(
+                        "🛒 Купить проект",
+                        callback_data="shop"
+                    )
+                ],
 
-            [
-                InlineKeyboardButton(
-                    "🛒 Купить проект",
-                    callback_data="shop"
-                )
-            ],
+                [
+                    InlineKeyboardButton(
+                        "🆓 Бесплатный проект",
+                        callback_data="free"
+                    )
+                ],
 
-            [
-                InlineKeyboardButton(
-                    "🏠 Главное меню",
-                    callback_data="main_menu"
-                )
-            ],
+                [
+                    InlineKeyboardButton(
+                        "🏠 Главное меню",
+                        callback_data="main_menu"
+                    )
+                ],
 
-        ])
-
-        await query.edit_message_text(
-            text,
-            reply_markup=keyboard
-        )
-
-    # =================================================
-    # ПАРТНЁРКА
-    # =================================================
-
-    elif query.data == "partner":
-
-        await show_partner(
-            query,
-            context
+            ])
         )
 
     # =================================================
-    # РЕКЛАМА
+    # ADS
     # =================================================
 
     elif query.data == "shop_ads":
@@ -988,7 +2292,7 @@ async def buttons(
         )
 
     # =================================================
-    # ПОКУПКА PRO
+    # BUY PRO
     # =================================================
 
     elif query.data == "buy_pro":
@@ -1001,7 +2305,7 @@ async def buttons(
         )
 
     # =================================================
-    # ПОКУПКА ULTIMATE
+    # BUY ULTIMATE
     # =================================================
 
     elif query.data == "buy_ultimate":
@@ -1013,9 +2317,81 @@ async def buttons(
             500
         )
 
+    # =================================================
+    # ADMIN
+    # =================================================
+
+    elif query.data.startswith("admin_"):
+
+        if query.from_user.id != ADMIN_ID:
+            return
+
+        if query.data == "admin_mod":
+
+            context.user_data["admin_upload"] = "mod"
+
+            await query.edit_message_text(
+                "📦 ЗАГРУЗКА ЧИСТОГО МОДА\n\n"
+                "Отправь ZIP-архив с чистым модом.\n\n"
+                "Лучше использовать:\n"
+                "clean_mod.zip",
+                reply_markup=back_menu("admin_panel")
+            )
+
+        elif query.data == "admin_sql":
+
+            context.user_data["admin_upload"] = "sql"
+
+            await query.edit_message_text(
+                "🗄 ЗАГРУЗКА SVoyak.SQL\n\n"
+                "Отправь файл:\n"
+                "svoyak.sql",
+                reply_markup=back_menu("admin_panel")
+            )
+
+        elif query.data == "admin_lib":
+
+            context.user_data["admin_upload"] = "lib"
+
+            await query.edit_message_text(
+                "📱 ЗАГРУЗКА LIBSVOYAK.SO\n\n"
+                "Отправь готовый файл:\n"
+                "libsvoyak.so",
+                reply_markup=back_menu("admin_panel")
+            )
+
+        elif query.data == "admin_status":
+
+            mod_status = "✅ загружен" if MOD_FILE.exists() else "❌ отсутствует"
+            sql_status = "✅ загружен" if SQL_FILE.exists() else "❌ отсутствует"
+            lib_status = "✅ загружен" if LIB_FILE.exists() else "❌ отсутствует"
+
+            await query.edit_message_text(
+                "📊 ФАЙЛЫ SVOYAK\n"
+                "━━━━━━━━━━━━━━━━━━━━\n\n"
+                f"📦 clean_mod.zip — {mod_status}\n"
+                f"🗄 svoyak.sql — {sql_status}\n"
+                f"📱 libsvoyak.so — {lib_status}\n\n"
+                f"🧰 build_client.sh — "
+                f"{'✅ найден' if BUILD_SCRIPT.exists() else '❌ отсутствует'}",
+                reply_markup=admin_menu()
+            )
+
+    elif query.data == "admin_panel":
+
+        if query.from_user.id != ADMIN_ID:
+            return
+
+        await query.edit_message_text(
+            "👑 АДМИН-ПАНЕЛЬ\n"
+            "━━━━━━━━━━━━━━━━━━━━\n\n"
+            "Управление файлами сборки:",
+            reply_markup=admin_menu()
+        )
+
 
 # =====================================================
-# СЧЁТ НА ОПЛАТУ
+# PAYMENT
 # =====================================================
 
 async def send_project_invoice(
@@ -1026,13 +2402,6 @@ async def send_project_invoice(
 ):
 
     user = update.effective_user
-
-    prices = [
-        LabeledPrice(
-            label=project_name,
-            amount=stars
-        )
-    ]
 
     await context.bot.send_invoice(
         chat_id=user.id,
@@ -1045,47 +2414,37 @@ async def send_project_invoice(
             f"project:{project_name}:{user.id}"
         ),
         currency="XTR",
-        prices=prices
+        prices=[
+            LabeledPrice(
+                label=project_name,
+                amount=stars
+            )
+        ]
     )
 
-
-# =====================================================
-# PRE-CHECKOUT
-# =====================================================
 
 async def precheckout_callback(
     update,
     context
 ):
 
-    query = update.pre_checkout_query
-
-    await query.answer(
+    await update.pre_checkout_query.answer(
         ok=True
     )
 
-
-# =====================================================
-# УСПЕШНАЯ ОПЛАТА
-# =====================================================
 
 async def successful_payment(
     update,
     context
 ):
 
-    payment = (
-        update.message.successful_payment
-    )
+    payment = update.message.successful_payment
 
     user = update.effective_user
 
     payload = payment.invoice_payload
 
-    if not payload.startswith(
-        "project:"
-    ):
-
+    if not payload.startswith("project:"):
         return
 
     parts = payload.split(
@@ -1094,16 +2453,11 @@ async def successful_payment(
     )
 
     if len(parts) != 3:
-
         return
 
     project_name = parts[1]
 
     stars = payment.total_amount
-
-    # =================================================
-    # ЗАГРУЖАЕМ ДАННЫЕ
-    # =================================================
 
     data = load_data()
 
@@ -1112,22 +2466,13 @@ async def successful_payment(
         user.id
     )
 
-    # =================================================
-    # ДОБАВЛЯЕМ ПРОЕКТ
-    # =================================================
-
     if project_name not in buyer["projects"]:
 
         buyer["projects"].append(
             project_name
         )
 
-    # Пользователь совершил покупку
     buyer["has_purchased"] = True
-
-    # =================================================
-    # РЕФЕРАЛЬНОЕ НАЧИСЛЕНИЕ
-    # =================================================
 
     referrer_id = buyer.get(
         "referrer"
@@ -1142,8 +2487,6 @@ async def successful_payment(
             referrer_id
         )
 
-        # Начисления только если реферер
-        # уже совершил собственную покупку
         if referrer.get(
             "has_purchased",
             False
@@ -1153,53 +2496,21 @@ async def successful_payment(
                 stars * 0.15
             )
 
-            referrer["balance"] += (
-                referral_profit
-            )
+            referrer["balance"] += referral_profit
+            referrer["total_profit"] += referral_profit
+            referrer["monthly_profit"] += referral_profit
+            referrer["weekly_profit"] += referral_profit
+            referrer["today_profit"] += referral_profit
 
-            referrer["total_profit"] += (
-                referral_profit
-            )
+    save_data(data)
 
-            referrer["monthly_profit"] += (
-                referral_profit
-            )
-
-            referrer["weekly_profit"] += (
-                referral_profit
-            )
-
-            referrer["today_profit"] += (
-                referral_profit
-            )
-
-    # =================================================
-    # СОХРАНЯЕМ
-    # =================================================
-
-    save_data(
-        data
-    )
-
-    # =================================================
-    # ПОЛЬЗОВАТЕЛЮ
-    # =================================================
-
-    text = (
+    await update.message.reply_text(
         "✅ ОПЛАТА ПОЛУЧЕНА!\n"
         "━━━━━━━━━━━━━━━━━━━━\n\n"
         f"📦 Проект: {project_name}\n"
-        f"👤 Telegram ID: {user.id}\n"
         f"🪙 Оплачено: {stars} ⭐\n\n"
         "📁 Проект добавлен в «Мои проекты».\n"
-        "🔓 Заказ закреплён за твоим Telegram.\n"
-        "🔨 Персональная сборка подготовлена к запуску.\n\n"
-        "⏳ Следующий этап — настройка названия, "
-        "цветов, иконки и параметров сервера."
-    )
-
-    await update.message.reply_text(
-        text,
+        "🔓 Заказ закреплён за твоим Telegram.",
         reply_markup=InlineKeyboardMarkup([
 
             [
@@ -1226,15 +2537,11 @@ async def successful_payment(
         ])
     )
 
-    # =================================================
-    # УВЕДОМЛЕНИЕ АДМИНУ
-    # =================================================
+    try:
 
-    if ADMIN_ID:
-
-        try:
-
-            admin_text = (
+        await context.bot.send_message(
+            chat_id=ADMIN_ID,
+            text=(
                 "💰 НОВАЯ ОПЛАТА\n"
                 "━━━━━━━━━━━━━━━━━━━━\n"
                 f"👤 Пользователь: {user.first_name}\n"
@@ -1242,34 +2549,18 @@ async def successful_payment(
                 f"📦 Проект: {project_name}\n"
                 f"🪙 Сумма: {stars} ⭐"
             )
+        )
 
-            if referral_profit > 0:
+    except Exception as error:
 
-                admin_text += (
-                    f"\n💸 Реферальное начисление: "
-                    f"{referral_profit} 💸"
-                )
-
-            admin_text += (
-                f"\n🧾 Charge ID: "
-                f"{payment.telegram_payment_charge_id}"
-            )
-
-            await context.bot.send_message(
-                chat_id=ADMIN_ID,
-                text=admin_text
-            )
-
-        except Exception as error:
-
-            print(
-                "Ошибка уведомления админу:",
-                error
-            )
+        print(
+            "Ошибка уведомления админу:",
+            error
+        )
 
 
 # =====================================================
-# ЗАПУСК
+# RUN
 # =====================================================
 
 def run():
@@ -1292,7 +2583,6 @@ def run():
         .build()
     )
 
-    # /start
     app.add_handler(
         CommandHandler(
             "start",
@@ -1300,21 +2590,41 @@ def run():
         )
     )
 
-    # Inline-кнопки
+    app.add_handler(
+        CommandHandler(
+            "admin",
+            admin_command
+        )
+    )
+
+    # Админские документы
+    app.add_handler(
+        MessageHandler(
+            filters.Document.ALL,
+            admin_upload_document
+        )
+    )
+
+    # Бесплатная сборка
+    app.add_handler(
+        MessageHandler(
+            filters.TEXT & ~filters.COMMAND,
+            free_build_message
+        )
+    )
+
     app.add_handler(
         CallbackQueryHandler(
             buttons
         )
     )
 
-    # Pre-checkout
     app.add_handler(
         PreCheckoutQueryHandler(
             precheckout_callback
         )
     )
 
-    # Успешная оплата
     app.add_handler(
         MessageHandler(
             filters.SUCCESSFUL_PAYMENT,
