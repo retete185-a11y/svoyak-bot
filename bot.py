@@ -264,13 +264,13 @@ def support_menu():
         [
             InlineKeyboardButton(
                 "📄 Пользовательское соглашение",
-                url="https://telegra.ph/Polzovatelskoe-soglashenie-08-24-56"
+                url="https://telegra.ph/Polzovatelskoe-soglashenie-SVOYAK-09-05-2"
             )
         ],
         [
             InlineKeyboardButton(
                 "🔐 Политика конфиденциальности",
-                url="https://telegra.ph/Politika-konfidencialnosti-08-24-77"
+                url="https://telegra.ph/SVOYAK--Politika-konfidencialnosti-09-05"
             )
         ],
         [
@@ -774,13 +774,11 @@ def run():
             "Не задан BOT_TOKEN в Environment Variables Render."
         )
 
-    # Запускаем HTTP-сервер Render
     threading.Thread(
         target=run_web_server,
         daemon=True
     ).start()
 
-    # Создаём Telegram-приложение
     app = (
         Application
         .builder()
@@ -788,7 +786,6 @@ def run():
         .build()
     )
 
-    # Команда /start
     app.add_handler(
         CommandHandler(
             "start",
@@ -796,21 +793,18 @@ def run():
         )
     )
 
-    # Inline-кнопки
     app.add_handler(
         CallbackQueryHandler(
             buttons
         )
     )
 
-    # Telegram Stars — подтверждение перед оплатой
     app.add_handler(
         PreCheckoutQueryHandler(
             precheckout_callback
         )
     )
 
-    # Успешная оплата
     app.add_handler(
         MessageHandler(
             filters.SUCCESSFUL_PAYMENT,
