@@ -2,21 +2,33 @@ import os
 import threading
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
-from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
+from telegram import (
+    InlineKeyboardButton,
+    InlineKeyboardMarkup,
+    LabeledPrice,
+    Update,
+)
 from telegram.ext import (
     Application,
     CallbackQueryHandler,
     CommandHandler,
     ContextTypes,
+    MessageHandler,
+    PreCheckoutQueryHandler,
+    filters,
 )
+
+# =====================================================
+# НАСТРОЙКИ
+# =====================================================
 
 TOKEN = os.getenv("BOT_TOKEN")
 ADMIN_ID = 8999035301
 
-
 # =====================================================
 # WEB SERVER ДЛЯ RENDER
 # =====================================================
+
 
 class HealthHandler(BaseHTTPRequestHandler):
     def do_GET(self):
@@ -37,6 +49,7 @@ def run_web_server():
 # =====================================================
 # ГЛАВНОЕ МЕНЮ
 # =====================================================
+
 
 def main_menu():
     keyboard = [
@@ -79,6 +92,7 @@ def main_menu():
 # МАГАЗИН
 # =====================================================
 
+
 def shop_menu():
     keyboard = [
         [
@@ -105,31 +119,140 @@ def shop_menu():
 
 
 # =====================================================
-# КНОПКИ НАЗАД
+# МЕНЮ ПРОЕКТОВ
 # =====================================================
 
-def back_menu(back_callback="main_menu"):
-    return InlineKeyboardMarkup([
+
+def projects_menu():
+    keyboard = [
+        [
+            InlineKeyboardButton(
+                "📦 BLACK RUSSIA PRO · ⭐️ 200",
+                callback_data="project_pro",
+            ),
+        ],
+        [
+            InlineKeyboardButton(
+                "🎁 BLACK RUSSIA ULTIMATE v2.2 · ⭐️ 500",
+                callback_data="project_ultimate",
+            ),
+        ],
+        [
+            InlineKeyboardButton(
+                "👁 PRO ИЛИ ULTIMATE v2.2",
+                callback_data="project_compare",
+            ),
+        ],
         [
             InlineKeyboardButton(
                 "◀️ Назад",
-                callback_data=back_callback,
+                callback_data="shop",
+            ),
+        ],
+    ]
+
+    return InlineKeyboardMarkup(keyboard)
+
+
+# =====================================================
+# PRO
+# =====================================================
+
+
+def pro_menu():
+    keyboard = [
+        [
+            InlineKeyboardButton(
+                "🪙 TELEGRAM STARS · 200",
+                callback_data="buy_pro",
             ),
         ],
         [
             InlineKeyboardButton(
-                "🏠 Главное меню",
-                callback_data="main_menu",
+                "◀️ Назад к проектам",
+                callback_data="shop_projects",
             ),
         ],
-    ])
+    ]
+
+    return InlineKeyboardMarkup(keyboard)
+
+
+# =====================================================
+# ULTIMATE
+# =====================================================
+
+
+def ultimate_menu():
+    keyboard = [
+        [
+            InlineKeyboardButton(
+                "🪙 TELEGRAM STARS · 500",
+                callback_data="buy_ultimate",
+            ),
+        ],
+        [
+            InlineKeyboardButton(
+                "◀️ Назад к проектам",
+                callback_data="shop_projects",
+            ),
+        ],
+    ]
+
+    return InlineKeyboardMarkup(keyboard)
+
+
+# =====================================================
+# СРАВНЕНИЕ
+# =====================================================
+
+
+def compare_menu():
+    keyboard = [
+        [
+            InlineKeyboardButton(
+                "◀️ Назад к проектам",
+                callback_data="shop_projects",
+            ),
+        ],
+    ]
+
+    return InlineKeyboardMarkup(keyboard)
+
+
+# =====================================================
+# НАЗАД / ГЛАВНОЕ МЕНЮ
+# =====================================================
+
+
+def back_menu(callback="main_menu"):
+    return InlineKeyboardMarkup(
+        [
+            [
+                InlineKeyboardButton(
+                    "◀️ Назад",
+                    callback_data=callback,
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    "🏠 Главное меню",
+                    callback_data="main_menu",
+                )
+            ],
+        ]
+    )
 
 
 # =====================================================
 # /START
 # =====================================================
 
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+
+async def start(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+):
     user = update.effective_user
     name = user.first_name or "пользователь"
 
@@ -153,8 +276,9 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 # =====================================================
-# ОБРАБОТКА КНОПОК
+# КНОПКИ
 # =====================================================
+
 
 async def buttons(
     update: Update,
@@ -163,11 +287,12 @@ async def buttons(
     query = update.callback_query
     await query.answer()
 
-    # -------------------------
+    # =================================================
     # ГЛАВНОЕ МЕНЮ
-    # -------------------------
+    # =================================================
 
     if query.data == "main_menu":
+
         user = query.from_user
         name = user.first_name or "пользователь"
 
@@ -189,11 +314,12 @@ async def buttons(
             reply_markup=main_menu(),
         )
 
-    # -------------------------
+    # =================================================
     # МАГАЗИН
-    # -------------------------
+    # =================================================
 
     elif query.data == "shop":
+
         text = (
             "🪙 МАГАЗИН SVOYAK\n"
             "━━━━━━━━━━━━━━━━━━━━\n"
@@ -210,127 +336,358 @@ async def buttons(
             reply_markup=shop_menu(),
         )
 
-    # -------------------------
+    # =================================================
     # ПРОЕКТЫ
-    # -------------------------
+    # =================================================
 
     elif query.data == "shop_projects":
+
         text = (
-            "📦 ПРОЕКТЫ\n\n"
-            "Здесь будут отображаться доступные проекты.\n\n"
-            "Пока каталог пуст."
+            "📦 ПРОЕКТЫ BLACK RUSSIA\n"
+            "━━━━━━━━━━━━━━━━━━━━\n"
+            "В магазине два готовых проекта. После оплаты "
+            "заказ закрепляется за твоим Telegram и открывает "
+            "персональную сборку.\n\n"
+            "📦 BLACK RUSSIA PRO · ⭐️ 200\n"
+            "Доработанный проект с упором на тюнинг, "
+            "визуал и быстрый запуск.\n\n"
+            "🎁 BLACK RUSSIA ULTIMATE v2.2 · ⭐️ 500\n"
+            "Расширенная версия PRO с дополнительными системами.\n\n"
+            "🪙 Автооплата: Telegram Stars.\n"
+            "🔓 После оплаты доступ выдаётся автоматически."
         )
 
         await query.edit_message_text(
             text,
-            reply_markup=back_menu("shop"),
+            reply_markup=projects_menu(),
         )
 
-    # -------------------------
-    # РЕКЛАМА
-    # -------------------------
+    # =================================================
+    # BLACK RUSSIA PRO
+    # =================================================
 
-    elif query.data == "shop_ads":
+    elif query.data == "project_pro":
+
         text = (
-            "📢 РЕКЛАМА В КАНАЛЕ\n\n"
-            "Здесь будут тарифы на рекламу.\n\n"
-            "Раздел находится в разработке."
+            "📦 BLACK RUSSIA PRO\n"
+            "━━━━━━━━━━━━━━━━━━━━\n"
+            "⭐️ 200   🕓 сборка ~10 минут\n\n"
+            "Готовый мод с упором на тюнинг и визуал. "
+            "Ставится на твой сервер целиком: мод, база данных "
+            "и приложение.\n\n"
+            "Что внутри\n"
+            "• Стайлинг, тех-центр и шиномонтаж — тюнинг сохраняется\n"
+            "• Радиальное меню, GPS-метки и зелёные зоны\n"
+            "• Кейсы, ревард-система, автосалоны с выбором цвета\n"
+            "• Донат и инвентарь работают полностью\n\n"
+            "Проект остаётся твоим\n"
+            "• Название, цвета, иконка и ID приложения — под тебя\n"
+            "• APK не конфликтует с другими проектами\n"
+            "• Авторство полностью твоё\n"
+            "• Обновления твоей копии при наличии соответствующих прав\n\n"
+            "🔓 Доступ откроется сразу после оплаты."
         )
 
         await query.edit_message_text(
             text,
-            reply_markup=back_menu("shop"),
+            reply_markup=pro_menu(),
         )
 
-    # -------------------------
+    # =================================================
+    # ULTIMATE
+    # =================================================
+
+    elif query.data == "project_ultimate":
+
+        text = (
+            "📦 BLACK RUSSIA ULTIMATE v2.2\n"
+            "━━━━━━━━━━━━━━━━━━━━\n"
+            "⭐️ 500   🕓 сборка ~10 минут\n\n"
+            "Всё из BLACK RUSSIA PRO плюс дополнительные системы.\n\n"
+            "Что добавлено\n"
+            "• Маркетплейс, гаражи и контейнеры\n"
+            "• Аукцион, система трейда и Black Pass\n"
+            "• Блэкджек, кости и система водолаза\n"
+            "• Тюнинг-центры работают как полноценные бизнесы\n\n"
+            "Готов к нагрузке\n"
+            "• Цель — стабильная работа при высоком онлайне\n"
+            "• Код оптимизирован\n"
+            "• Основные причины крашей исправляются в процессе сборки\n\n"
+            "Проект остаётся твоим\n"
+            "• Название, цвета, логотипы, иконка и ID приложения — под тебя\n"
+            "• Персональная лицензия привязывается к твоему серверу\n"
+            "• Авторство полностью твоё\n\n"
+            "🔓 Доступ откроется сразу после оплаты."
+        )
+
+        await query.edit_message_text(
+            text,
+            reply_markup=ultimate_menu(),
+        )
+
+    # =================================================
+    # СРАВНЕНИЕ
+    # =================================================
+
+    elif query.data == "project_compare":
+
+        text = (
+            "👁 PRO ИЛИ ULTIMATE v2.2\n"
+            "━━━━━━━━━━━━━━━━━━━━\n\n"
+            "📦 BLACK RUSSIA PRO · 200 🌟\n"
+            "📦 BLACK RUSSIA ULTIMATE · 500 🌟\n\n"
+            "Одинаково в обоих\n"
+            "• Свой APK: название, цвета, иконка, ID приложения\n"
+            "• Тюнинг-центры, радиальное меню, зелёные зоны, кейсы\n"
+            "• Донат и инвентарь\n"
+            "• Установка мода и базы на твой сервер\n"
+            "• Бесплатные обновления при наличии соответствующих прав\n\n"
+            "Только в ULTIMATE v2.2\n"
+            "• Маркетплейс, гаражи, контейнеры\n"
+            "• Аукцион, трейд, Black Pass\n"
+            "• Блэкджек, кости, водолаз\n"
+            "• Тюнинг-центры как бизнесы\n"
+            "• Оптимизация под высокий онлайн\n"
+            "• Персональная лицензия на твой сервер\n"
+            "• Подключение сайта логов и AutoDonate\n\n"
+            "ℹ Начинаешь и хочешь просто запуститься — бери PRO.\n"
+            "Планируешь большой проект с экономикой — ULTIMATE v2.2."
+        )
+
+        await query.edit_message_text(
+            text,
+            reply_markup=compare_menu(),
+        )
+
+    # =================================================
     # БЕСПЛАТНЫЙ ПРОЕКТ
-    # -------------------------
+    # =================================================
 
     elif query.data == "free":
-        text = (
-            "🆓 БЕСПЛАТНЫЙ ПРОЕКТ\n\n"
-            "Здесь появится бесплатный проект."
-        )
 
         await query.edit_message_text(
-            text,
+            "🆓 БЕСПЛАТНЫЙ ПРОЕКТ\n\n"
+            "Здесь появится бесплатный проект.",
             reply_markup=back_menu(),
         )
 
-    # -------------------------
+    # =================================================
     # СОБРАТЬ ПРОЕКТ
-    # -------------------------
+    # =================================================
 
     elif query.data == "build":
-        text = (
-            "🔨 СОБРАТЬ ПРОЕКТ\n\n"
-            "Здесь бот начнёт задавать вопросы "
-            "для сборки проекта."
-        )
 
         await query.edit_message_text(
-            text,
+            "🔨 СОБРАТЬ ПРОЕКТ\n\n"
+            "После покупки здесь можно будет начать "
+            "персональную сборку проекта.",
             reply_markup=back_menu(),
         )
 
-    # -------------------------
+    # =================================================
     # МОИ ПРОЕКТЫ
-    # -------------------------
+    # =================================================
 
     elif query.data == "projects":
-        text = (
-            "📁 МОИ ПРОЕКТЫ\n\n"
-            "У тебя пока нет проектов."
-        )
 
         await query.edit_message_text(
-            text,
+            "📁 МОИ ПРОЕКТЫ\n\n"
+            "Здесь будут отображаться купленные проекты "
+            "и статус их сборки.",
             reply_markup=back_menu(),
         )
 
-    # -------------------------
+    # =================================================
     # ПОДДЕРЖКА
-    # -------------------------
+    # =================================================
 
     elif query.data == "support":
-        text = (
-            "🆘 ПОДДЕРЖКА\n\n"
-            "Здесь будет связь с поддержкой."
-        )
 
         await query.edit_message_text(
-            text,
+            "🆘 ПОДДЕРЖКА\n\n"
+            "Раздел поддержки будет подключён позже.",
             reply_markup=back_menu(),
         )
 
-    # -------------------------
+    # =================================================
     # ПАРТНЁРКА
-    # -------------------------
+    # =================================================
 
     elif query.data == "partner":
-        text = (
-            "🤝 ПАРТНЁРКА\n\n"
-            "Здесь появится партнёрская программа SVOYAK."
-        )
 
         await query.edit_message_text(
-            text,
+            "🤝 ПАРТНЁРКА\n\n"
+            "Партнёрская программа SVOYAK будет "
+            "подключена следующим этапом.",
             reply_markup=back_menu(),
         )
+
+    # =================================================
+    # ПОКУПКА PRO
+    # =================================================
+
+    elif query.data == "buy_pro":
+
+        await send_project_invoice(
+            update,
+            context,
+            "BLACK RUSSIA PRO",
+            200,
+        )
+
+    # =================================================
+    # ПОКУПКА ULTIMATE
+    # =================================================
+
+    elif query.data == "buy_ultimate":
+
+        await send_project_invoice(
+            update,
+            context,
+            "BLACK RUSSIA ULTIMATE v2.2",
+            500,
+        )
+
+
+# =====================================================
+# ОТПРАВКА СЧЁТА TELEGRAM STARS
+# =====================================================
+
+
+async def send_project_invoice(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+    project_name: str,
+    stars: int,
+):
+
+    user = update.effective_user
+
+    prices = [
+        LabeledPrice(
+            label=project_name,
+            amount=stars,
+        )
+    ]
+
+    await context.bot.send_invoice(
+        chat_id=user.id,
+        title=project_name,
+        description=(
+            f"Персональная сборка проекта {project_name} "
+            "под твой сервер."
+        ),
+        payload=f"project:{project_name}:{user.id}",
+        currency="XTR",
+        prices=prices,
+    )
+
+
+# =====================================================
+# PRE-CHECKOUT
+# =====================================================
+
+
+async def precheckout_callback(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+):
+
+    query = update.pre_checkout_query
+
+    await query.answer(ok=True)
+
+
+# =====================================================
+# УСПЕШНАЯ ОПЛАТА
+# =====================================================
+
+
+async def successful_payment(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+):
+
+    payment = update.message.successful_payment
+    user = update.effective_user
+
+    payload = payment.invoice_payload
+
+    if not payload.startswith("project:"):
+        return
+
+    parts = payload.split(":", 2)
+
+    if len(parts) != 3:
+        return
+
+    project_name = parts[1]
+
+    text = (
+        "✅ ОПЛАТА ПОЛУЧЕНА!\n"
+        "━━━━━━━━━━━━━━━━━━━━\n\n"
+        f"📦 Проект: {project_name}\n"
+        f"👤 Telegram ID: {user.id}\n"
+        f"🪙 Оплачено: {payment.total_amount} ⭐\n\n"
+        "🔓 Заказ закреплён за твоим Telegram.\n"
+        "🔨 Персональная сборка подготовлена к запуску.\n\n"
+        "⏳ Следующий этап — настройка названия, "
+        "цветов, иконки и параметров сервера."
+    )
+
+    await update.message.reply_text(
+        text,
+        reply_markup=InlineKeyboardMarkup(
+            [
+                [
+                    InlineKeyboardButton(
+                        "📁 Мои проекты",
+                        callback_data="projects",
+                    )
+                ],
+                [
+                    InlineKeyboardButton(
+                        "🏠 Главное меню",
+                        callback_data="main_menu",
+                    )
+                ],
+            ]
+        ),
+    )
+
+    # Уведомление администратора
+    if ADMIN_ID:
+        try:
+            await context.bot.send_message(
+                chat_id=ADMIN_ID,
+                text=(
+                    "💰 НОВАЯ ОПЛАТА\n"
+                    "━━━━━━━━━━━━━━━━━━━━\n"
+                    f"👤 Пользователь: {user.first_name}\n"
+                    f"🆔 Telegram ID: {user.id}\n"
+                    f"📦 Проект: {project_name}\n"
+                    f"🪙 Сумма: {payment.total_amount} ⭐\n"
+                    f"🧾 Charge ID: {payment.telegram_payment_charge_id}"
+                ),
+            )
+        except Exception as error:
+            print(
+                f"Не удалось отправить уведомление админу: {error}"
+            )
 
 
 # =====================================================
 # ЗАПУСК
 # =====================================================
 
+
 def run():
+
     if not TOKEN:
         raise RuntimeError(
-            "Не задана переменная окружения BOT_TOKEN"
+            "Не задан BOT_TOKEN в Environment Variables Render."
         )
 
-    # HTTP-сервер запускаем отдельно,
-    # чтобы Render Web Service видел открытый порт.
     threading.Thread(
         target=run_web_server,
         daemon=True,
@@ -344,6 +701,19 @@ def run():
 
     app.add_handler(
         CallbackQueryHandler(buttons)
+    )
+
+    app.add_handler(
+        PreCheckoutQueryHandler(
+            precheckout_callback
+        )
+    )
+
+    app.add_handler(
+        MessageHandler(
+            filters.SUCCESSFUL_PAYMENT,
+            successful_payment,
+        )
     )
 
     print("SVOYAK BOT запущен!")
