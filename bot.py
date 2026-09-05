@@ -24,7 +24,6 @@ from telegram.ext import (
 
 TOKEN = os.getenv("BOT_TOKEN")
 
-# ID администратора SVOYAK
 ADMIN_ID = 8999035301
 
 
@@ -44,7 +43,10 @@ class HealthHandler(BaseHTTPRequestHandler):
 
 
 def run_web_server():
-    port = int(os.getenv("PORT", "10000"))
+
+    port = int(
+        os.getenv("PORT", "10000")
+    )
 
     server = HTTPServer(
         ("0.0.0.0", port),
@@ -61,39 +63,48 @@ def run_web_server():
 def main_menu():
 
     keyboard = [
+
         [
             InlineKeyboardButton(
                 "🛒 Магазин",
                 callback_data="shop"
             ),
+
             InlineKeyboardButton(
                 "🆓 Бесплатный проект",
                 callback_data="free"
             ),
         ],
+
         [
             InlineKeyboardButton(
                 "🔨 Собрать проект",
                 callback_data="build"
             ),
+
             InlineKeyboardButton(
                 "📁 Мои проекты",
                 callback_data="projects"
             ),
         ],
+
         [
             InlineKeyboardButton(
                 "🆘 Поддержка",
                 callback_data="support"
             ),
+
             InlineKeyboardButton(
                 "🤝 Партнёрка",
                 callback_data="partner"
             ),
         ],
+
     ]
 
-    return InlineKeyboardMarkup(keyboard)
+    return InlineKeyboardMarkup(
+        keyboard
+    )
 
 
 # =====================================================
@@ -103,27 +114,33 @@ def main_menu():
 def shop_menu():
 
     keyboard = [
+
         [
             InlineKeyboardButton(
                 "📦 Проекты",
                 callback_data="shop_projects"
             )
         ],
+
         [
             InlineKeyboardButton(
                 "📢 Реклама в канале",
                 callback_data="shop_ads"
             )
         ],
+
         [
             InlineKeyboardButton(
                 "🏠 Главное меню",
                 callback_data="main_menu"
             )
         ],
+
     ]
 
-    return InlineKeyboardMarkup(keyboard)
+    return InlineKeyboardMarkup(
+        keyboard
+    )
 
 
 # =====================================================
@@ -133,33 +150,40 @@ def shop_menu():
 def projects_menu():
 
     keyboard = [
+
         [
             InlineKeyboardButton(
                 "📦 BLACK RUSSIA PRO · ⭐️ 200",
                 callback_data="project_pro"
             )
         ],
+
         [
             InlineKeyboardButton(
                 "🎁 BLACK RUSSIA ULTIMATE v2.2 · ⭐️ 500",
                 callback_data="project_ultimate"
             )
         ],
+
         [
             InlineKeyboardButton(
                 "👁 PRO ИЛИ ULTIMATE v2.2",
                 callback_data="project_compare"
             )
         ],
+
         [
             InlineKeyboardButton(
                 "◀️ Назад",
                 callback_data="shop"
             )
         ],
+
     ]
 
-    return InlineKeyboardMarkup(keyboard)
+    return InlineKeyboardMarkup(
+        keyboard
+    )
 
 
 # =====================================================
@@ -169,21 +193,26 @@ def projects_menu():
 def pro_menu():
 
     keyboard = [
+
         [
             InlineKeyboardButton(
                 "🪙 TELEGRAM STARS · 200",
                 callback_data="buy_pro"
             )
         ],
+
         [
             InlineKeyboardButton(
                 "◀️ Назад к проектам",
                 callback_data="shop_projects"
             )
         ],
+
     ]
 
-    return InlineKeyboardMarkup(keyboard)
+    return InlineKeyboardMarkup(
+        keyboard
+    )
 
 
 # =====================================================
@@ -193,21 +222,26 @@ def pro_menu():
 def ultimate_menu():
 
     keyboard = [
+
         [
             InlineKeyboardButton(
                 "🪙 TELEGRAM STARS · 500",
                 callback_data="buy_ultimate"
             )
         ],
+
         [
             InlineKeyboardButton(
                 "◀️ Назад к проектам",
                 callback_data="shop_projects"
             )
         ],
+
     ]
 
-    return InlineKeyboardMarkup(keyboard)
+    return InlineKeyboardMarkup(
+        keyboard
+    )
 
 
 # =====================================================
@@ -217,34 +251,48 @@ def ultimate_menu():
 def compare_menu():
 
     return InlineKeyboardMarkup([
+
         [
             InlineKeyboardButton(
                 "◀️ Назад к проектам",
                 callback_data="shop_projects"
             )
-        ]
-    ])
-
-
-# =====================================================
-# ОБЫЧНОЕ МЕНЮ НАЗАД
-# =====================================================
-
-def back_menu(callback="main_menu"):
-
-    return InlineKeyboardMarkup([
-        [
-            InlineKeyboardButton(
-                "◀️ Назад",
-                callback_data=callback
-            )
         ],
+
         [
             InlineKeyboardButton(
                 "🏠 Главное меню",
                 callback_data="main_menu"
             )
         ],
+
+    ])
+
+
+# =====================================================
+# НАЗАД
+# =====================================================
+
+def back_menu(
+    callback="main_menu"
+):
+
+    return InlineKeyboardMarkup([
+
+        [
+            InlineKeyboardButton(
+                "◀️ Назад",
+                callback_data=callback
+            )
+        ],
+
+        [
+            InlineKeyboardButton(
+                "🏠 Главное меню",
+                callback_data="main_menu"
+            )
+        ],
+
     ])
 
 
@@ -255,33 +303,40 @@ def back_menu(callback="main_menu"):
 def support_menu():
 
     keyboard = [
+
         [
             InlineKeyboardButton(
                 "💬 Написать в поддержку",
                 url="https://t.me/svoyak_support_bot"
             )
         ],
+
         [
             InlineKeyboardButton(
                 "📄 Пользовательское соглашение",
                 url="https://telegra.ph/Polzovatelskoe-soglashenie-SVOYAK-09-05-2"
             )
         ],
+
         [
             InlineKeyboardButton(
                 "🔐 Политика конфиденциальности",
                 url="https://telegra.ph/SVOYAK--Politika-konfidencialnosti-09-05"
             )
         ],
+
         [
             InlineKeyboardButton(
                 "🏠 Главное меню",
                 callback_data="main_menu"
             )
         ],
+
     ]
 
-    return InlineKeyboardMarkup(keyboard)
+    return InlineKeyboardMarkup(
+        keyboard
+    )
 
 
 async def show_support(query):
@@ -549,11 +604,37 @@ async def buttons(
 
     elif query.data == "build":
 
+        text = (
+            "🔨 СБОРКА ПРОЕКТА\n"
+            "━━━━━━━━━━━━━━━━━━━━\n"
+            "Оплаченных запусков пока нет.\n\n"
+            "Купи BLACK RUSSIA PRO или ULTIMATE v2.2 — "
+            "и студия откроется сразу после оплаты. "
+            "Бесплатная сборка доступна кнопкой "
+            "«Бесплатный проект» в меню."
+        )
+
+        keyboard = InlineKeyboardMarkup([
+
+            [
+                InlineKeyboardButton(
+                    "🛒 Купить проект",
+                    callback_data="shop"
+                )
+            ],
+
+            [
+                InlineKeyboardButton(
+                    "🏠 Главное меню",
+                    callback_data="main_menu"
+                )
+            ],
+
+        ])
+
         await query.edit_message_text(
-            "🔨 СОБРАТЬ ПРОЕКТ\n\n"
-            "После покупки здесь можно будет начать "
-            "персональную сборку проекта.",
-            reply_markup=back_menu()
+            text,
+            reply_markup=keyboard
         )
 
     # =================================================
@@ -698,9 +779,9 @@ async def successful_payment(
 
     project_name = parts[1]
 
-    # -------------------------------------------------
-    # СООБЩЕНИЕ ПОЛЬЗОВАТЕЛЮ
-    # -------------------------------------------------
+    # =================================================
+    # ПОЛЬЗОВАТЕЛЮ
+    # =================================================
 
     text = (
         "✅ ОПЛАТА ПОЛУЧЕНА!\n"
@@ -717,24 +798,27 @@ async def successful_payment(
     await update.message.reply_text(
         text,
         reply_markup=InlineKeyboardMarkup([
+
             [
                 InlineKeyboardButton(
                     "📁 Мои проекты",
                     callback_data="projects"
                 )
             ],
+
             [
                 InlineKeyboardButton(
                     "🏠 Главное меню",
                     callback_data="main_menu"
                 )
             ],
+
         ])
     )
 
-    # -------------------------------------------------
+    # =================================================
     # УВЕДОМЛЕНИЕ АДМИНУ
-    # -------------------------------------------------
+    # =================================================
 
     if ADMIN_ID:
 
@@ -786,6 +870,7 @@ def run():
         .build()
     )
 
+    # /start
     app.add_handler(
         CommandHandler(
             "start",
@@ -793,18 +878,21 @@ def run():
         )
     )
 
+    # Кнопки
     app.add_handler(
         CallbackQueryHandler(
             buttons
         )
     )
 
+    # Telegram Stars
     app.add_handler(
         PreCheckoutQueryHandler(
             precheckout_callback
         )
     )
 
+    # Успешная оплата
     app.add_handler(
         MessageHandler(
             filters.SUCCESSFUL_PAYMENT,
@@ -812,7 +900,9 @@ def run():
         )
     )
 
-    print("SVOYAK BOT запущен!")
+    print(
+        "SVOYAK BOT запущен!"
+    )
 
     app.run_polling()
 
@@ -822,4 +912,5 @@ def run():
 # =====================================================
 
 if __name__ == "__main__":
+
     run()
