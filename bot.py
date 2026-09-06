@@ -43,11 +43,11 @@ ADMIN_FILES_DIR = Path("admin_files")
 MOD_FILE = ADMIN_FILES_DIR / "clean_mod.zip"
 SQL_FILE = ADMIN_FILES_DIR / "svoyak.sql"
 
-# JNI-проект вместо готового libsvoyak.so
+# JNI-проект
 JNI_FILE = ADMIN_FILES_DIR / "jni_project.zip"
 JNI_DIR = ADMIN_FILES_DIR / "jni_project"
 
-# Скрипт автоматической сборки JNI
+# Скрипт сборки JNI
 BUILD_SCRIPT = Path(__file__).resolve().parent / "build_client.sh"
 
 BASE_DIR.mkdir(parents=True, exist_ok=True)
@@ -127,7 +127,7 @@ def get_user(data, user_id):
 
 
 # =====================================================
-# RENDER WEB SERVER
+# WEB SERVER
 # =====================================================
 
 class HealthHandler(BaseHTTPRequestHandler):
@@ -680,7 +680,7 @@ def parse_mysql(value):
 
 
 # =====================================================
-# FTP
+# FTP PARSE
 # =====================================================
 
 def parse_ftp(value):
@@ -917,11 +917,9 @@ async def free_build_message(
             "host username password database\n\n"
             "Пример:\n"
             "127.0.0.1 game_user strong_password game_db\n\n"
-            "Эти данные будут записаны в настройки будущего "
-            "игрового сервера.\n"
-            "Бот к базе не подключается: готовый SQL нужно будет "
+            "Бот к базе не подключается: готовый SQL нужно "
             "импортировать вручную.\n\n"
-            "Если в пароле есть пробелы — просто отправь как есть, "
+            "Если в пароле есть пробелы — отправь как есть, "
             "имя базы должно быть последним.\n"
             "🔐 Сообщение с паролем бот удалит сразу после чтения."
         )
@@ -943,9 +941,7 @@ async def free_build_message(
                 "Формат:\n"
                 "host username password database\n\n"
                 "Пароль может содержать пробелы.\n"
-                "Название базы должно быть последним.\n\n"
-                "Пример:\n"
-                "127.0.0.1 game_user strong password game_db"
+                "Название базы должно быть последним."
             )
 
             return
@@ -973,10 +969,12 @@ async def free_build_message(
                 "Отправь доступ к FTP одной строкой:\n"
                 "IP:PORT login password\n"
                 "Пример: 185.10.20.30:21 mylogin mypassword\n\n"
-                "⚠️ Порт обязателен.\n\n"
-                "📁 Подготовленный мод и svoyak.sql будут загружены "
-                "в корень FTP.\n"
-                "После сборки импортируй svoyak.sql в указанную базу вручную.\n\n"
+                "⚠️ Бот удалит только те файлы и папки в корне FTP, "
+                "которые совпадают по названию с элементами твоего мода.\n"
+                "Другие папки и файлы FTP НЕ будут удалены.\n\n"
+                "📦 Мод будет загружен на FTP.\n"
+                "🗄 svoyak.sql на FTP загружаться НЕ будет.\n\n"
+                "После сборки импортируй svoyak.sql в базу вручную.\n\n"
                 "🔐 Сообщение с доступом будет удалено.\n\n"
                 "Если загрузка не нужна, отправь пропустить."
             )
@@ -1118,10 +1116,6 @@ def prepare_mod(
         exist_ok=True
     )
 
-    # -------------------------------------------------
-    # CLEAN MOD
-    # -------------------------------------------------
-
     if not MOD_FILE.exists():
 
         return {
@@ -1151,7 +1145,6 @@ def prepare_mod(
                     )
                 }
 
-            # Защита от ZIP Path Traversal
             root = mod_dir.resolve()
 
             for member in archive.infolist():
@@ -1183,7 +1176,10 @@ def prepare_mod(
 
         return {
             "ok": False,
-            "error": "clean_mod.zip повреждён или не является ZIP-архивом."
+            "error": (
+                "clean_mod.zip повреждён "
+                "или не является ZIP-архивом."
+            )
         }
 
     except Exception as error:
@@ -1193,9 +1189,9 @@ def prepare_mod(
             "error": f"Ошибка распаковки clean_mod.zip: {error}"
         }
 
-    # -------------------------------------------------
-    # MYSQL
-    # -------------------------------------------------
+    # =================================================
+    # MYSQL + ДАННЫЕ ПРОЕКТА
+    # =================================================
 
     mysql = build["mysql"]
 
@@ -1291,9 +1287,9 @@ def prepare_mod(
                 error
             )
 
-    # -------------------------------------------------
+    # =================================================
     # SQL
-    # -------------------------------------------------
+    # =================================================
 
     sql_path = generate_sql(
         build,
@@ -1307,6 +1303,11 @@ def prepare_mod(
             "error": "Не удалось подготовить svoyak.sql."
         }
 
+    # SQL остаётся в локальной сборке,
+    # но НЕ должен загружаться на FTP.
+    #
+    # В мод также добавляем SQL, чтобы при необходимости
+    # он присутствовал в архиве локальной сборки.
     try:
 
         shutil.copy2(
@@ -1463,10 +1464,6 @@ def prepare_jni_project():
                     )
                 }
 
-            # -------------------------------------------------
-            # Защита от ZIP Path Traversal
-            # -------------------------------------------------
-
             root = JNI_DIR.resolve()
 
             for member in archive.infolist():
@@ -1511,11 +1508,6 @@ def prepare_jni_project():
                 f"Ошибка распаковки JNI-проекта: {error}"
             )
         }
-
-    # -------------------------------------------------
-    # Если ZIP содержит одну папку,
-    # используем её как корень проекта
-    # -------------------------------------------------
 
     current_dir = JNI_DIR
 
@@ -1564,10 +1556,6 @@ def build_client(
 
     output = build_dir / "libsvoyak.so"
 
-    # -------------------------------------------------
-    # Подготавливаем JNI
-    # -------------------------------------------------
-
     jni_result = prepare_jni_project()
 
     if not jni_result.get("ok"):
@@ -1583,10 +1571,6 @@ def build_client(
         jni_result["dir"]
     )
 
-    # -------------------------------------------------
-    # Проверяем build_client.sh
-    # -------------------------------------------------
-
     if not BUILD_SCRIPT.exists():
 
         print(
@@ -1595,10 +1579,6 @@ def build_client(
         )
 
         return None
-
-    # -------------------------------------------------
-    # ENV для JNI
-    # -------------------------------------------------
 
     env = os.environ.copy()
 
@@ -1629,10 +1609,6 @@ def build_client(
     env["SVOYAK_BUILD_DIR"] = str(
         build_dir.resolve()
     )
-
-    # -------------------------------------------------
-    # Запуск сборки
-    # -------------------------------------------------
 
     try:
 
@@ -1714,12 +1690,7 @@ def build_client(
             )
 
         if result.returncode != 0:
-
             return None
-
-        # -------------------------------------------------
-        # Ищем libsvoyak.so
-        # -------------------------------------------------
 
         candidates = [
 
@@ -1747,10 +1718,6 @@ def build_client(
             / "libsvoyak.so",
         ]
 
-        # -------------------------------------------------
-        # Полный поиск
-        # -------------------------------------------------
-
         try:
 
             for found in jni_dir.rglob(
@@ -1769,10 +1736,6 @@ def build_client(
                 "Ошибка поиска библиотеки:",
                 error
             )
-
-        # -------------------------------------------------
-        # Копируем результат
-        # -------------------------------------------------
 
         for candidate in candidates:
 
@@ -1795,24 +1758,8 @@ def build_client(
                 ):
 
                     print(
-                        "================================================="
-                    )
-
-                    print(
-                        "JNI BUILD SUCCESS:"
-                    )
-
-                    print(
+                        "JNI BUILD SUCCESS:",
                         output
-                    )
-
-                    print(
-                        "SIZE:",
-                        output.stat().st_size
-                    )
-
-                    print(
-                        "================================================="
                     )
 
                     return output
@@ -1839,6 +1786,183 @@ def build_client(
         )
 
     return None
+
+
+# =====================================================
+# FTP HELPERS
+# =====================================================
+
+def ftp_is_directory(ftp, name):
+    """
+    Проверяет, является ли элемент директорией.
+    """
+
+    current = ftp.pwd()
+
+    try:
+
+        ftp.cwd(name)
+
+        ftp.cwd(current)
+
+        return True
+
+    except Exception:
+
+        try:
+            ftp.cwd(current)
+        except Exception:
+            pass
+
+        return False
+
+
+def ftp_delete_recursive(ftp, path):
+    """
+    Удаляет конкретную папку со всем содержимым.
+    Вызывается ТОЛЬКО для папки, которую бот решил
+    заменить из состава нового мода.
+    """
+
+    current = ftp.pwd()
+
+    try:
+        ftp.cwd(path)
+    except Exception:
+        return False
+
+    try:
+
+        try:
+            items = ftp.nlst()
+        except Exception:
+            items = []
+
+        for item in items:
+
+            name = os.path.basename(
+                item.rstrip("/")
+            )
+
+            if not name:
+                continue
+
+            if name in (".", ".."):
+                continue
+
+            try:
+
+                if ftp_is_directory(
+                    ftp,
+                    name
+                ):
+
+                    ftp_delete_recursive(
+                        ftp,
+                        name
+                    )
+
+                    try:
+                        ftp.rmd(name)
+                    except Exception:
+                        pass
+
+                else:
+
+                    try:
+                        ftp.delete(name)
+                    except Exception:
+                        pass
+
+            except Exception as error:
+
+                print(
+                    "FTP delete item error:",
+                    name,
+                    error
+                )
+
+        ftp.cwd("..")
+
+        try:
+            ftp.rmd(path)
+        except Exception:
+            pass
+
+        return True
+
+    except Exception as error:
+
+        print(
+            "FTP recursive delete error:",
+            path,
+            error
+        )
+
+        try:
+            ftp.cwd(current)
+        except Exception:
+            pass
+
+        return False
+
+
+def ftp_delete_item(ftp, name):
+    """
+    Удаляет один конкретный элемент из FTP.
+    Ничего другого не трогает.
+    """
+
+    try:
+
+        if name in (".", ".."):
+            return False
+
+        # Сначала проверяем папку
+        if ftp_is_directory(
+            ftp,
+            name
+        ):
+
+            print(
+                "FTP: удаляем старую папку мода:",
+                name
+            )
+
+            return ftp_delete_recursive(
+                ftp,
+                name
+            )
+
+        # Иначе это файл
+        print(
+            "FTP: удаляем старый файл мода:",
+            name
+        )
+
+        try:
+            ftp.delete(name)
+            return True
+
+        except Exception as error:
+
+            print(
+                "FTP: не удалось удалить файл:",
+                name,
+                error
+            )
+
+            return False
+
+    except Exception as error:
+
+        print(
+            "FTP delete error:",
+            name,
+            error
+        )
+
+        return False
 
 
 # =====================================================
@@ -1879,9 +2003,87 @@ def upload_ftp(
 
         ftp.set_pasv(True)
 
-        # -------------------------------------------------
-        # Безопасная загрузка директории
-        # -------------------------------------------------
+        # =================================================
+        # КОРЕНЬ FTP
+        # =================================================
+
+        ftp.cwd("/")
+
+        print(
+            "FTP ROOT:",
+            ftp.pwd()
+        )
+
+        local_path = Path(local_dir)
+
+        # =================================================
+        # 1. УЗНАЁМ, ЧТО ИМЕННО ЕСТЬ В МОДЕ
+        # =================================================
+        #
+        # ВАЖНО:
+        #
+        # Мы НЕ удаляем весь FTP.
+        #
+        # Удаляем только те элементы корня FTP,
+        # которые совпадают по имени с элементами
+        # нашего нового мода.
+        #
+        # Например:
+        #
+        # FTP:
+        #   gamemodes/
+        #   filterscripts/
+        #   scriptfiles/
+        #   чужая_папка/
+        #
+        # Новый мод:
+        #   gamemodes/
+        #   filterscripts/
+        #   scriptfiles/
+        #
+        # Будут удалены только:
+        #   gamemodes/
+        #   filterscripts/
+        #   scriptfiles/
+        #
+        # "чужая_папка/" останется.
+        #
+        # SQL НЕ участвует в удалении/загрузке.
+        # =================================================
+
+        local_top_items = []
+
+        for item in local_path.iterdir():
+
+            if item.name.lower() == "svoyak.sql":
+                continue
+
+            local_top_items.append(
+                item.name
+            )
+
+        print(
+            "FTP: элементы нового мода:",
+            local_top_items
+        )
+
+        # =================================================
+        # 2. УДАЛЯЕМ ТОЛЬКО СОВПАДАЮЩИЕ ЭЛЕМЕНТЫ
+        # =================================================
+
+        for item_name in local_top_items:
+
+            ftp_delete_item(
+                ftp,
+                item_name
+            )
+
+        # Возвращаемся в корень
+        ftp.cwd("/")
+
+        # =================================================
+        # 3. СОЗДАНИЕ ПАПКИ
+        # =================================================
 
         def ensure_remote_dir(name):
 
@@ -1897,36 +2099,80 @@ def upload_ftp(
             try:
 
                 ftp.mkd(name)
+
                 ftp.cwd(name)
 
                 return True
 
-            except Exception:
+            except Exception as error:
+
+                print(
+                    "FTP MKD ERROR:",
+                    name,
+                    error
+                )
 
                 return False
 
-        def upload_directory(local_path):
+        # =================================================
+        # 4. ЗАГРУЗКА МОДА
+        # =================================================
 
-            for item in Path(local_path).iterdir():
+        def upload_directory(local_current):
+
+            local_current = Path(
+                local_current
+            )
+
+            for item in local_current.iterdir():
+
+                # -----------------------------------------
+                # SQL НИКОГДА НЕ ЗАГРУЖАЕМ НА FTP
+                # -----------------------------------------
+
+                if (
+                    item.is_file()
+                    and item.name.lower() == "svoyak.sql"
+                ):
+
+                    print(
+                        "FTP: SQL пропущен:",
+                        item
+                    )
+
+                    continue
+
+                # -----------------------------------------
+                # ПАПКА
+                # -----------------------------------------
 
                 if item.is_dir():
 
-                    current_name = item.name
-
                     if not ensure_remote_dir(
-                        current_name
+                        item.name
                     ):
 
                         raise RuntimeError(
-                            f"Не удалось создать/открыть "
-                            f"FTP-папку: {current_name}"
+                            "Не удалось создать/открыть "
+                            f"FTP-папку: {item.name}"
                         )
 
-                    upload_directory(item)
+                    upload_directory(
+                        item
+                    )
 
                     ftp.cwd("..")
 
+                # -----------------------------------------
+                # ФАЙЛ
+                # -----------------------------------------
+
                 else:
+
+                    print(
+                        "FTP: загрузка:",
+                        item
+                    )
 
                     with open(
                         item,
@@ -1941,8 +2187,10 @@ def upload_ftp(
         ftp.cwd("/")
 
         upload_directory(
-            local_dir
+            local_path
         )
+
+        ftp.cwd("/")
 
         ftp.quit()
 
@@ -2032,7 +2280,7 @@ def perform_build(
     try:
 
         # -------------------------------------------------
-        # 1. CLEAN MOD
+        # CLEAN MOD
         # -------------------------------------------------
 
         if not MOD_FILE.exists():
@@ -2047,7 +2295,7 @@ def perform_build(
             }
 
         # -------------------------------------------------
-        # 2. SQL
+        # SQL
         # -------------------------------------------------
 
         if not SQL_FILE.exists():
@@ -2062,7 +2310,7 @@ def perform_build(
             }
 
         # -------------------------------------------------
-        # 3. JNI
+        # JNI
         # -------------------------------------------------
 
         if not JNI_FILE.exists():
@@ -2077,7 +2325,7 @@ def perform_build(
             }
 
         # -------------------------------------------------
-        # 4. BUILD SCRIPT
+        # BUILD SCRIPT
         # -------------------------------------------------
 
         if not BUILD_SCRIPT.exists():
@@ -2090,7 +2338,7 @@ def perform_build(
             }
 
         # -------------------------------------------------
-        # 5. PREPARE MOD
+        # PREPARE MOD
         # -------------------------------------------------
 
         prepared = prepare_mod(
@@ -2109,7 +2357,7 @@ def perform_build(
             }
 
         # -------------------------------------------------
-        # 6. SQL
+        # SQL
         # -------------------------------------------------
 
         sql_path = build_dir / "svoyak.sql"
@@ -2122,7 +2370,7 @@ def perform_build(
             }
 
         # -------------------------------------------------
-        # 7. JNI BUILD
+        # JNI BUILD
         # -------------------------------------------------
 
         lib_path = build_client(
@@ -2147,7 +2395,7 @@ def perform_build(
             }
 
         # -------------------------------------------------
-        # 8. FTP
+        # FTP
         # -------------------------------------------------
 
         ftp_result = {
@@ -2177,7 +2425,7 @@ def perform_build(
                 }
 
         # -------------------------------------------------
-        # 9. SUCCESS
+        # SUCCESS
         # -------------------------------------------------
 
         return {
@@ -2385,7 +2633,9 @@ async def create_build(
         if result.get("ftp_uploaded"):
 
             ftp_text = (
-                "\n\n📁 Мод загружен в корень FTP."
+                "\n\n📁 Мод загружен на FTP.\n"
+                "🛡️ Другие папки и файлы FTP не затронуты.\n"
+                "🗄 svoyak.sql на FTP не загружался."
             )
 
     await context.bot.send_message(
@@ -2857,7 +3107,23 @@ async def buttons(
         )
 
     # =================================================
-    # ADMIN
+    # ADMIN PANEL
+    # =================================================
+
+    elif query.data == "admin_panel":
+
+        if query.from_user.id != ADMIN_ID:
+            return
+
+        await query.edit_message_text(
+            "👑 АДМИН-ПАНЕЛЬ\n"
+            "━━━━━━━━━━━━━━━━━━━━\n\n"
+            "Управление файлами сборки:",
+            reply_markup=admin_menu()
+        )
+
+    # =================================================
+    # ADMIN ACTIONS
     # =================================================
 
     elif query.data.startswith("admin_"):
@@ -2950,23 +3216,10 @@ async def buttons(
                 "🧰 build_client.sh\n\n"
                 "⚙️ ABI: arm64-v8a\n"
                 "🛠 NDK: r25c\n\n"
-                "Готовый libsvoyak.so теперь "
-                "загружать НЕ нужно — бот собирает его "
-                "из JNI-проекта автоматически.",
+                "Готовый libsvoyak.so загружать НЕ нужно — "
+                "бот собирает его из JNI-проекта автоматически.",
                 reply_markup=admin_menu()
             )
-
-    elif query.data == "admin_panel":
-
-        if query.from_user.id != ADMIN_ID:
-            return
-
-        await query.edit_message_text(
-            "👑 АДМИН-ПАНЕЛЬ\n"
-            "━━━━━━━━━━━━━━━━━━━━\n\n"
-            "Управление файлами сборки:",
-            reply_markup=admin_menu()
-        )
 
 
 # =====================================================
