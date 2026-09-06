@@ -43,12 +43,8 @@ ADMIN_FILES_DIR = Path("admin_files")
 MOD_FILE = ADMIN_FILES_DIR / "clean_mod.zip"
 SQL_FILE = ADMIN_FILES_DIR / "svoyak.sql"
 
-# JNI-проект
 JNI_FILE = ADMIN_FILES_DIR / "jni_project.zip"
 JNI_DIR = ADMIN_FILES_DIR / "jni_project"
-
-# Скрипт сборки JNI
-BUILD_SCRIPT = Path(__file__).resolve().parent / "build_client.sh"
 
 BASE_DIR.mkdir(parents=True, exist_ok=True)
 ADMIN_FILES_DIR.mkdir(parents=True, exist_ok=True)
@@ -66,20 +62,15 @@ def load_data():
         }
 
     try:
-        with open(DATA_FILE, "r", encoding="utf-8") as file:
-            data = json.load(file)
+        with open(DATA_FILE, "r", encoding="utf-8") as f:
+            data = json.load(f)
 
-        if "users" not in data:
-            data["users"] = {}
-
-        if "builds" not in data:
-            data["builds"] = {}
+        data.setdefault("users", {})
+        data.setdefault("builds", {})
 
         return data
 
-    except Exception as error:
-        print("Ошибка чтения JSON:", error)
-
+    except Exception:
         return {
             "users": {},
             "builds": {}
@@ -89,12 +80,12 @@ def load_data():
 def save_data(data):
     temp_file = DATA_FILE + ".tmp"
 
-    with open(temp_file, "w", encoding="utf-8") as file:
+    with open(temp_file, "w", encoding="utf-8") as f:
         json.dump(
             data,
-            file,
+            f,
             ensure_ascii=False,
-            indent=4
+            indent=2
         )
 
     os.replace(temp_file, DATA_FILE)
@@ -115,34 +106,54 @@ def get_user(data, user_id):
             "today_profit": 0,
             "referrals": [],
             "has_purchased": False,
-            "free_build": None
+            "free_build": False,
+            "blocked": False
         }
 
     user = data["users"][user_id]
 
-    if "free_build" not in user:
-        user["free_build"] = None
+    user.setdefault("referrer", None)
+    user.setdefault("projects", [])
+    user.setdefault("balance", 0)
+    user.setdefault("total_profit", 0)
+    user.setdefault("monthly_profit", 0)
+    user.setdefault("weekly_profit", 0)
+    user.setdefault("yesterday_profit", 0)
+    user.setdefault("today_profit", 0)
+    user.setdefault("referrals", [])
+    user.setdefault("has_purchased", False)
+    user.setdefault("free_build", False)
+    user.setdefault("blocked", False)
 
     return user
 
 
 # =====================================================
-# WEB SERVER
+# WEB HEALTH
 # =====================================================
 
 class HealthHandler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         self.send_response(200)
+        self.send_header(
+            "Content-Type",
+            "text/plain; charset=utf-8"
+        )
         self.end_headers()
-        self.wfile.write(b"SVOYAK BOT is running!")
+
+        self.wfile.write(
+            b"SVOYAK BOT is running!"
+        )
 
     def log_message(self, format, *args):
         return
 
 
 def run_web_server():
-    port = int(os.getenv("PORT", "10000"))
+    port = int(
+        os.getenv("PORT", "10000")
+    )
 
     server = HTTPServer(
         ("0.0.0.0", port),
@@ -153,371 +164,472 @@ def run_web_server():
 
 
 # =====================================================
-# ГЛАВНОЕ МЕНЮ
+# МЕНЮ
 # =====================================================
 
-def main_menu():
-    return InlineKeyboardMarkup([
+def main_menu(user_id=None):
+
+    buttons = [
         [
             InlineKeyboardButton(
                 "🛒 Магазин",
                 callback_data="shop"
-            ),
-            InlineKeyboardButton(
-                "🆓 Бесплатный проект",
-                callback_data="free"
-            ),
+            )
         ],
         [
             InlineKeyboardButton(
-                "🔨 Собрать проект",
-                callback_data="build"
-            ),
+                "🆓 Бесплатный проект",
+                callback_data="free_build"
+            )
+        ],
+        [
             InlineKeyboardButton(
-                "📁 Мои проекты",
+                "⚙️ Сборка",
+                callback_data="build"
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                "📂 Мои проекты",
                 callback_data="projects"
-            ),
+            )
         ],
         [
             InlineKeyboardButton(
                 "🆘 Поддержка",
                 callback_data="support"
-            ),
+            )
+        ],
+        [
             InlineKeyboardButton(
                 "🤝 Партнёрка",
                 callback_data="partner"
-            ),
+            )
         ],
-    ])
+    ]
 
+    if user_id == ADMIN_ID:
+        buttons.append([
+            InlineKeyboardButton(
+                "👑 Админ-панель",
+                callback_data="admin_panel"
+            )
+        ])
 
-# =====================================================
-# НАЗАД
-# =====================================================
+    return InlineKeyboardMarkup(buttons)
+
 
 def back_menu(callback="main_menu"):
+
     return InlineKeyboardMarkup([
         [
             InlineKeyboardButton(
-                "◀️ Назад",
+                "⬅️ Назад",
                 callback_data=callback
             )
-        ],
-        [
-            InlineKeyboardButton(
-                "🏠 Главное меню",
-                callback_data="main_menu"
-            )
-        ],
+        ]
     ])
 
 
 # =====================================================
-# SHOP
+# МАГАЗИН
 # =====================================================
 
 def shop_menu():
+
     return InlineKeyboardMarkup([
         [
             InlineKeyboardButton(
-                "📦 Проекты",
-                callback_data="shop_projects"
+                "⭐ PRO",
+                callback_data="pro"
             )
         ],
         [
             InlineKeyboardButton(
-                "📢 Реклама в канале",
-                callback_data="shop_ads"
+                "💎 ULTIMATE",
+                callback_data="ultimate"
             )
         ],
         [
             InlineKeyboardButton(
-                "🏠 Главное меню",
+                "📊 Сравнить",
+                callback_data="compare"
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                "⬅️ Назад",
                 callback_data="main_menu"
             )
-        ],
-    ])
-
-
-def projects_menu():
-    return InlineKeyboardMarkup([
-        [
-            InlineKeyboardButton(
-                "📦 BLACK RUSSIA PRO · ⭐️ 200",
-                callback_data="project_pro"
-            )
-        ],
-        [
-            InlineKeyboardButton(
-                "🎁 BLACK RUSSIA ULTIMATE v2.2 · ⭐️ 500",
-                callback_data="project_ultimate"
-            )
-        ],
-        [
-            InlineKeyboardButton(
-                "👁 PRO ИЛИ ULTIMATE v2.2",
-                callback_data="project_compare"
-            )
-        ],
-        [
-            InlineKeyboardButton(
-                "◀️ Назад",
-                callback_data="shop"
-            )
-        ],
+        ]
     ])
 
 
 def pro_menu():
+
     return InlineKeyboardMarkup([
         [
             InlineKeyboardButton(
-                "🪙 TELEGRAM STARS · 200",
+                "💳 Купить PRO",
                 callback_data="buy_pro"
             )
         ],
         [
             InlineKeyboardButton(
-                "◀️ Назад к проектам",
-                callback_data="shop_projects"
+                "⬅️ Назад",
+                callback_data="shop"
             )
-        ],
-        [
-            InlineKeyboardButton(
-                "🏠 Главное меню",
-                callback_data="main_menu"
-            )
-        ],
+        ]
     ])
 
 
 def ultimate_menu():
+
     return InlineKeyboardMarkup([
         [
             InlineKeyboardButton(
-                "🪙 TELEGRAM STARS · 500",
+                "💳 Купить ULTIMATE",
                 callback_data="buy_ultimate"
             )
         ],
         [
             InlineKeyboardButton(
-                "◀️ Назад к проектам",
-                callback_data="shop_projects"
+                "⬅️ Назад",
+                callback_data="shop"
             )
-        ],
-        [
-            InlineKeyboardButton(
-                "🏠 Главное меню",
-                callback_data="main_menu"
-            )
-        ],
+        ]
     ])
 
 
 def compare_menu():
+
     return InlineKeyboardMarkup([
         [
             InlineKeyboardButton(
-                "◀️ Назад к проектам",
-                callback_data="shop_projects"
+                "⬅️ Назад",
+                callback_data="shop"
+            )
+        ]
+    ])
+
+
+# =====================================================
+# АДМИНКА
+# =====================================================
+
+def admin_menu():
+
+    return InlineKeyboardMarkup([
+        [
+            InlineKeyboardButton(
+                "📦 Загрузить мод",
+                callback_data="admin_mod"
             )
         ],
         [
             InlineKeyboardButton(
-                "🏠 Главное меню",
-                callback_data="main_menu"
+                "🗄 Загрузить SQL",
+                callback_data="admin_sql"
             )
         ],
+        [
+            InlineKeyboardButton(
+                "🧩 Загрузить JNI-проект",
+                callback_data="admin_jni"
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                "📋 Статус файлов",
+                callback_data="admin_status"
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                "👥 Пользователи",
+                callback_data="admin_users"
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                "📊 Статистика",
+                callback_data="admin_stats"
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                "💰 Управление очками",
+                callback_data="admin_points"
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                "📢 Рассылка",
+                callback_data="admin_broadcast"
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                "⬅️ Назад",
+                callback_data="main_menu"
+            )
+        ]
     ])
+
+
+# =====================================================
+# START
+# =====================================================
+
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+
+    user = update.effective_user
+
+    data = load_data()
+
+    db_user = get_user(
+        data,
+        user.id
+    )
+
+    if db_user.get("blocked") and user.id != ADMIN_ID:
+        await update.message.reply_text(
+            "🚫 Твой аккаунт заблокирован."
+        )
+        return
+
+    # Реферал
+    if context.args:
+
+        arg = context.args[0]
+
+        if arg.startswith("ref_"):
+
+            try:
+
+                referrer_id = int(
+                    arg.replace("ref_", "")
+                )
+
+                if (
+                    referrer_id != user.id
+                    and not db_user["referrer"]
+                ):
+
+                    db_user["referrer"] = referrer_id
+
+                    referrer = get_user(
+                        data,
+                        referrer_id
+                    )
+
+                    if user.id not in referrer["referrals"]:
+                        referrer["referrals"].append(
+                            user.id
+                        )
+
+                    save_data(data)
+
+            except Exception:
+                pass
+
+    save_data(data)
+
+    text = (
+        "🤖 <b>SVOYAK</b>\n\n"
+        "Добро пожаловать!\n\n"
+        "Здесь можно создать свой игровой проект, "
+        "подготовить мод и собрать клиентскую библиотеку.\n\n"
+        "Выбери нужный раздел ниже 👇"
+    )
+
+    await update.message.reply_text(
+        text,
+        parse_mode="HTML",
+        reply_markup=main_menu(user.id)
+    )
+
+
+# =====================================================
+# ADMIN COMMAND
+# =====================================================
+
+async def admin_command(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE
+):
+
+    if update.effective_user.id != ADMIN_ID:
+        return
+
+    await update.message.reply_text(
+        "👑 <b>Админ-панель SVOYAK</b>",
+        parse_mode="HTML",
+        reply_markup=admin_menu()
+    )
 
 
 # =====================================================
 # SUPPORT
 # =====================================================
 
-async def show_support(query):
+async def support(update, context):
 
     text = (
-        "🆘 ПОДДЕРЖКА\n"
-        "━━━━━━━━━━━━━━━━━━━━\n\n"
-        "Если у тебя возник вопрос по проекту, "
-        "сборке или работе SVOYAK — обратись в поддержку."
+        "🆘 <b>Поддержка</b>\n\n"
+        "Если у тебя возникла проблема с проектом "
+        "или сборкой — напиши в поддержку."
     )
 
-    await query.edit_message_text(
+    keyboard = InlineKeyboardMarkup([
+        [
+            InlineKeyboardButton(
+                "💬 Поддержка",
+                url="https://t.me/svoyak_support_bot"
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                "📜 Пользовательское соглашение",
+                url="https://telegra.ph/"
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                "🔐 Политика конфиденциальности",
+                url="https://telegra.ph/"
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                "⬅️ Назад",
+                callback_data="main_menu"
+            )
+        ]
+    ])
+
+    await update.callback_query.edit_message_text(
         text,
-        reply_markup=InlineKeyboardMarkup([
-            [
-                InlineKeyboardButton(
-                    "💬 Написать в поддержку",
-                    url="https://t.me/svoyak_support_bot"
-                )
-            ],
-            [
-                InlineKeyboardButton(
-                    "📄 Пользовательское соглашение",
-                    url="https://telegra.ph/Polzovatelskoe-soglashenie-SVOYAK-09-05-2"
-                )
-            ],
-            [
-                InlineKeyboardButton(
-                    "🔐 Политика конфиденциальности",
-                    url="https://telegra.ph/SVOYAK--Politika-konfidencialnosti-09-05"
-                )
-            ],
-            [
-                InlineKeyboardButton(
-                    "🏠 Главное меню",
-                    callback_data="main_menu"
-                )
-            ],
-        ])
+        parse_mode="HTML",
+        reply_markup=keyboard
     )
 
 
 # =====================================================
-# PARTNER
+# ПАРТНЁРКА
 # =====================================================
 
-async def show_partner(query, context):
+async def partner(update, context):
 
-    data = load_data()
+    user = update.effective_user
 
-    user_id = query.from_user.id
+    try:
 
-    user = get_user(
-        data,
-        user_id
-    )
+        bot_user = await context.bot.get_me()
 
-    bot_info = await context.bot.get_me()
-
-    referral_link = (
-        f"https://t.me/{bot_info.username}"
-        f"?start=ref_{user_id}"
-    )
-
-    referrals_count = len(
-        user.get("referrals", [])
-    )
-
-    text = (
-        "💸 ПАРТНЁРСКАЯ ПРОГРАММА\n"
-        "━━━━━━━━━━━━━━━━━━━━\n"
-        "Наша партнёрская программа позволяет "
-        "зарабатывать без вложений. Приглашай новых "
-        "пользователей и получай 15% от суммы их покупок.\n\n"
-
-        "📊 Статистика прибыли:\n"
-        f"За всё время: {user.get('total_profit', 0)} 💸\n"
-        f"За месяц: {user.get('monthly_profit', 0)} 💸\n"
-        f"За неделю: {user.get('weekly_profit', 0)} 💸\n"
-        f"За вчера: {user.get('yesterday_profit', 0)} 💸\n"
-        f"За сегодня: {user.get('today_profit', 0)} 💸\n\n"
-
-        f"👛 Текущий баланс: {user.get('balance', 0)} 💸\n"
-        f"👥 Реферальных пользователей: {referrals_count}\n\n"
-
-        "🔗 Твоя реферальная ссылка:\n"
-        f"{referral_link}\n\n"
-
-        "ℹ Начисления пойдут после твоей первой покупки — "
-        "это защита от накрутки. Приглашённые уже засчитываются."
-    )
-
-    await query.edit_message_text(
-        text,
-        reply_markup=InlineKeyboardMarkup([
-            [
-                InlineKeyboardButton(
-                    "🛒 Магазин",
-                    callback_data="shop"
-                )
-            ],
-            [
-                InlineKeyboardButton(
-                    "🏠 Главное меню",
-                    callback_data="main_menu"
-                )
-            ],
-        ])
-    )
-
-
-# =====================================================
-# MY PROJECTS
-# =====================================================
-
-async def show_projects(query):
-
-    data = load_data()
-
-    user = get_user(
-        data,
-        query.from_user.id
-    )
-
-    projects = user.get(
-        "projects",
-        []
-    )
-
-    if not projects:
-
-        await query.edit_message_text(
-            "📁 МОИ ПРОЕКТЫ\n"
-            "━━━━━━━━━━━━━━━━━━━━\n\n"
-            "У тебя пока нет созданных проектов.\n\n"
-            "Выбери BLACK RUSSIA PRO или ULTIMATE v2.2 в магазине.",
-            reply_markup=InlineKeyboardMarkup([
-                [
-                    InlineKeyboardButton(
-                        "🛒 Магазин",
-                        callback_data="shop"
-                    )
-                ],
-                [
-                    InlineKeyboardButton(
-                        "🏠 Главное меню",
-                        callback_data="main_menu"
-                    )
-                ],
-            ])
+        link = (
+            f"https://t.me/{bot_user.username}"
+            f"?start=ref_{user.id}"
         )
 
-        return
+    except Exception:
 
-    text = (
-        "📁 МОИ ПРОЕКТЫ\n"
-        "━━━━━━━━━━━━━━━━━━━━\n\n"
-        "Твои проекты:\n\n"
+        link = "Ссылка временно недоступна."
+
+    data = load_data()
+
+    db_user = get_user(
+        data,
+        user.id
     )
 
-    for index, project in enumerate(projects, 1):
-        text += f"📦 {index}. {project}\n"
+    referrals = len(
+        db_user["referrals"]
+    )
 
-    await query.edit_message_text(
+    balance = db_user["balance"]
+
+    text = (
+        "🤝 <b>Партнёрская программа</b>\n\n"
+        "Приглашай пользователей по своей ссылке.\n\n"
+        "💰 Доход: <b>15%</b> с покупки приглашённого "
+        "пользователя.\n\n"
+        f"👥 Приглашено: <b>{referrals}</b>\n"
+        f"💰 Баланс: <b>{balance}</b>\n\n"
+        f"🔗 Твоя ссылка:\n<code>{link}</code>"
+    )
+
+    await update.callback_query.edit_message_text(
         text,
-        reply_markup=InlineKeyboardMarkup([
-            [
-                InlineKeyboardButton(
-                    "🔨 Собрать проект",
-                    callback_data="build"
+        parse_mode="HTML",
+        reply_markup=back_menu()
+    )
+
+
+# =====================================================
+# ПРОЕКТЫ
+# =====================================================
+
+async def projects(update, context):
+
+    user = update.effective_user
+
+    data = load_data()
+
+    db_user = get_user(
+        data,
+        user.id
+    )
+
+    projects_list = db_user["projects"]
+
+    if not projects_list:
+
+        text = (
+            "📂 <b>Мои проекты</b>\n\n"
+            "У тебя пока нет проектов."
+        )
+
+    else:
+
+        lines = [
+            "📂 <b>Мои проекты</b>\n"
+        ]
+
+        for index, project in enumerate(
+            projects_list,
+            1
+        ):
+
+            if isinstance(project, dict):
+
+                name = project.get(
+                    "name",
+                    "Без названия"
                 )
-            ],
-            [
-                InlineKeyboardButton(
-                    "🛒 Магазин",
-                    callback_data="shop"
+
+                server = project.get(
+                    "server",
+                    "Не указан"
                 )
-            ],
-            [
-                InlineKeyboardButton(
-                    "🏠 Главное меню",
-                    callback_data="main_menu"
+
+                lines.append(
+                    f"{index}. <b>{name}</b> — "
+                    f"<code>{server}</code>"
                 )
-            ],
-        ])
+
+            else:
+
+                lines.append(
+                    f"{index}. {project}"
+                )
+
+        text = "\n".join(lines)
+
+    await update.callback_query.edit_message_text(
+        text,
+        parse_mode="HTML",
+        reply_markup=back_menu()
     )
 
 
@@ -525,27 +637,9 @@ async def show_projects(query):
 # FREE BUILD
 # =====================================================
 
-def free_build_start():
-    return (
-        "🛠 Новая сборка проекта\n\n"
-        "Я настрою клиентскую библиотеку, подготовлю "
-        "чистый мод и при необходимости загружу его на FTP.\n\n"
-        "Шаг 1 из 7 — игровой сервер\n"
-        "Отправь IP и порт в формате:\n"
-        "80.242.59.112:6793"
-    )
+async def free_build_start(update, context):
 
-
-async def start_free_build(query):
-
-    data = load_data()
-
-    user = get_user(
-        data,
-        query.from_user.id
-    )
-
-    user["free_build"] = {
+    context.user_data["free_build"] = {
         "step": 1,
         "server": None,
         "project_name": None,
@@ -557,65 +651,54 @@ async def start_free_build(query):
         "status": "collecting"
     }
 
-    save_data(data)
-
-    await query.edit_message_text(
-        free_build_start(),
-        reply_markup=InlineKeyboardMarkup([
-            [
-                InlineKeyboardButton(
-                    "🏠 Главное меню",
-                    callback_data="main_menu"
-                )
-            ]
-        ])
+    await update.callback_query.edit_message_text(
+        "🆓 <b>Бесплатный проект</b>\n\n"
+        "Шаг 1 из 7.\n\n"
+        "🌐 Введи IP и порт сервера в формате:\n"
+        "<code>127.0.0.1:7777</code>",
+        parse_mode="HTML",
+        reply_markup=back_menu()
     )
 
 
 def valid_server(value):
 
+    value = value.strip()
+
     if ":" not in value:
-        return None
+        return False
 
     ip, port = value.rsplit(":", 1)
 
-    ip = ip.strip()
-    port = port.strip()
-
-    if not ip:
-        return None
+    if not ip or not port:
+        return False
 
     try:
-        port_number = int(port)
+        port = int(port)
     except ValueError:
-        return None
+        return False
 
-    if port_number < 1 or port_number > 65535:
-        return None
-
-    return {
-        "ip": ip,
-        "port": port_number,
-        "address": f"{ip}:{port_number}"
-    }
+    return 1 <= port <= 65535
 
 
 def parse_bonuses(value):
 
-    parts = value.split()
+    parts = value.replace(",", " ").split()
 
     if len(parts) != 4:
         return None
 
     try:
+
         numbers = [
-            int(item)
-            for item in parts
+            int(x)
+            for x in parts
         ]
+
     except ValueError:
         return None
 
-    if any(number < 0 for number in numbers):
+    if any(x < 0 for x in numbers):
         return None
 
     return {
@@ -640,10 +723,6 @@ def parse_links(value):
     }
 
 
-# =====================================================
-# MYSQL
-# =====================================================
-
 def parse_mysql(value):
 
     parts = value.split()
@@ -651,37 +730,13 @@ def parse_mysql(value):
     if len(parts) < 4:
         return None
 
-    host = parts[0]
-    username = parts[1]
-    database = parts[-1]
-
-    password_parts = parts[2:-1]
-
-    password = " ".join(password_parts)
-
-    if not host:
-        return None
-
-    if not username:
-        return None
-
-    if not database:
-        return None
-
-    if not password:
-        return None
-
     return {
-        "host": host,
-        "username": username,
-        "password": password,
-        "database": database
+        "host": parts[0],
+        "username": parts[1],
+        "password": " ".join(parts[2:-1]),
+        "database": parts[-1]
     }
 
-
-# =====================================================
-# FTP PARSE
-# =====================================================
 
 def parse_ftp(value):
 
@@ -691,8 +746,6 @@ def parse_ftp(value):
         return None
 
     address = parts[0]
-    login = parts[1]
-    password = parts[2]
 
     if ":" not in address:
         return None
@@ -704,23 +757,14 @@ def parse_ftp(value):
     except ValueError:
         return None
 
-    if not ip:
-        return None
-
-    if not login:
-        return None
-
-    if not password:
-        return None
-
     if port < 1 or port > 65535:
         return None
 
     return {
-        "ip": ip,
+        "host": ip,
         "port": port,
-        "login": login,
-        "password": password
+        "username": parts[1],
+        "password": parts[2]
     }
 
 
@@ -729,103 +773,100 @@ def parse_ftp(value):
 # =====================================================
 
 async def free_build_message(
-    update: Update,
-    context: ContextTypes.DEFAULT_TYPE
+    update,
+    context
 ):
 
     if not update.message:
         return
 
-    if not update.message.text:
+    user = update.effective_user
+
+    value = update.message.text.strip()
+
+    state = context.user_data.get(
+        "free_build"
+    )
+
+    if not state:
         return
 
     data = load_data()
 
-    user_id = update.effective_user.id
-
-    user = get_user(
+    db_user = get_user(
         data,
-        user_id
+        user.id
     )
 
-    build = user.get("free_build")
+    if db_user.get("blocked") and user.id != ADMIN_ID:
 
-    if not build:
+        await update.message.reply_text(
+            "🚫 Твой аккаунт заблокирован."
+        )
+
         return
 
-    if build.get("status") != "collecting":
-        return
+    step = state.get("step")
 
-    step = build.get("step", 1)
-
-    value = update.message.text.strip()
-
-    # =================================================
-    # STEP 1
-    # =================================================
+    # -------------------------------------------------
+    # ШАГ 1
+    # -------------------------------------------------
 
     if step == 1:
 
-        server = valid_server(value)
-
-        if not server:
+        if not valid_server(value):
 
             await update.message.reply_text(
                 "❌ Неверный формат.\n\n"
-                "Отправь IP и порт так:\n"
-                "80.242.59.112:6793"
+                "Используй:\n"
+                "<code>127.0.0.1:7777</code>",
+                parse_mode="HTML"
             )
 
             return
 
-        build["server"] = server
-        build["step"] = 2
-
-        save_data(data)
+        state["server"] = value
+        state["step"] = 2
 
         await update.message.reply_text(
-            "Адрес сервера сохранён.\n\n"
-            "Шаг 2 из 7 — название проекта\n"
-            "Оно будет указано одновременно в клиентском "
-            "hooks.cpp и параметре nameserver чистого мода.\n"
-            "Пример: TEST SVOYAK"
+            "✅ Сервер сохранён.\n\n"
+            "Шаг 2 из 7.\n\n"
+            "📝 Введи название проекта."
         )
 
         return
 
-    # =================================================
-    # STEP 2
-    # =================================================
+    # -------------------------------------------------
+    # ШАГ 2
+    # -------------------------------------------------
 
     if step == 2:
 
-        if not value:
+        if len(value) < 2:
 
             await update.message.reply_text(
-                "❌ Название проекта не может быть пустым."
+                "❌ Название слишком короткое."
             )
 
             return
 
-        build["project_name"] = value
-        build["step"] = 3
-
-        save_data(data)
+        state["project_name"] = value
+        state["step"] = 3
 
         await update.message.reply_text(
-            "Название проекта сохранено.\n\n"
-            "Шаг 3 из 7 — стартовые бонусы\n"
-            "Отправь четыре числа одной строкой:\n"
-            "донат деньги VIP уровень\n\n"
-            "Пример:\n"
-            "10000 80000000 1 1"
+            "Шаг 3 из 7.\n\n"
+            "🎁 Введи бонусы в формате:\n\n"
+            "<code>донат деньги VIP уровень</code>\n\n"
+            "Например:\n"
+            "<code>1000 50000 3 5</code>",
+            parse_mode="HTML"
         )
 
         return
 
-    # =================================================
-    # STEP 3
-    # =================================================
+    # -------------------------------------------------
+    # ШАГ 3
+    # -------------------------------------------------
 
     if step == 3:
 
@@ -834,31 +875,29 @@ async def free_build_message(
         if not bonuses:
 
             await update.message.reply_text(
-                "❌ Нужно отправить ровно четыре числа.\n\n"
-                "Пример:\n"
-                "10000 80000000 1 1"
+                "❌ Неверный формат.\n\n"
+                "Нужно 4 числа:\n"
+                "<code>донат деньги VIP уровень</code>",
+                parse_mode="HTML"
             )
 
             return
 
-        build["bonuses"] = bonuses
-        build["step"] = 4
-
-        save_data(data)
+        state["bonuses"] = bonuses
+        state["step"] = 4
 
         await update.message.reply_text(
-            "Стартовые бонусы сохранены.\n\n"
-            "Шаг 4 из 7 — ссылки проекта\n"
-            "Отправь Telegram, VK и сайт через пробел:\n"
-            "t.me/myproject vk.com/myproject myproject.ru\n\n"
-            "Если какой-то ссылки нет, укажи вместо неё -."
+            "Шаг 4 из 7.\n\n"
+            "🔗 Введи ссылки в таком порядке:\n\n"
+            "<code>Telegram VK Сайт</code>",
+            parse_mode="HTML"
         )
 
         return
 
-    # =================================================
-    # STEP 4
-    # =================================================
+    # -------------------------------------------------
+    # ШАГ 4
+    # -------------------------------------------------
 
     if step == 4:
 
@@ -867,68 +906,54 @@ async def free_build_message(
         if not links:
 
             await update.message.reply_text(
-                "❌ Нужно указать три значения через пробел.\n\n"
-                "Пример:\n"
-                "t.me/myproject vk.com/myproject myproject.ru\n\n"
-                "Если ссылки нет — используй -."
+                "❌ Нужно указать 3 ссылки:\n"
+                "Telegram VK Сайт"
             )
 
             return
 
-        build["links"] = links
-        build["step"] = 5
-
-        save_data(data)
+        state["links"] = links
+        state["step"] = 5
 
         await update.message.reply_text(
-            "Ссылки проекта сохранены.\n\n"
-            "Шаг 5 из 7 — владелец проекта\n"
-            "Отправь точный игровой ник владельца.\n"
-            "Пример: Test_Svoyak\n\n"
-            "👑 Этот ник получит доступ к скрытым FULL-командам "
-            "и 13-й уровень администратора после импорта svoyak.sql."
+            "Шаг 5 из 7.\n\n"
+            "👤 Введи ник владельца проекта."
         )
 
         return
 
-    # =================================================
-    # STEP 5
-    # =================================================
+    # -------------------------------------------------
+    # ШАГ 5
+    # -------------------------------------------------
 
     if step == 5:
 
-        if not value:
+        if len(value) < 2:
 
             await update.message.reply_text(
-                "❌ Ник владельца не может быть пустым."
+                "❌ Ник слишком короткий."
             )
 
             return
 
-        build["owner"] = value
-        build["step"] = 6
-
-        save_data(data)
+        state["owner"] = value
+        state["step"] = 6
 
         await update.message.reply_text(
-            "Ник владельца сохранён.\n\n"
-            "Шаг 6 из 7 — база данных MySQL\n"
-            "Отправь четыре значения одной строкой:\n"
-            "host username password database\n\n"
-            "Пример:\n"
-            "127.0.0.1 game_user strong_password game_db\n\n"
-            "Бот к базе не подключается: готовый SQL нужно "
-            "импортировать вручную.\n\n"
-            "Если в пароле есть пробелы — отправь как есть, "
-            "имя базы должно быть последним.\n"
-            "🔐 Сообщение с паролем бот удалит сразу после чтения."
+            "Шаг 6 из 7.\n\n"
+            "🗄 Введи данные MySQL:\n\n"
+            "<code>HOST USER PASSWORD DATABASE</code>\n\n"
+            "Например:\n"
+            "<code>127.0.0.1 root 123456 svoyak</code>\n\n"
+            "⚠️ Сообщение с паролем будет удалено.",
+            parse_mode="HTML"
         )
 
         return
 
-    # =================================================
-    # STEP 6
-    # =================================================
+    # -------------------------------------------------
+    # ШАГ 6
+    # -------------------------------------------------
 
     if step == 6:
 
@@ -937,129 +962,92 @@ async def free_build_message(
         if not mysql:
 
             await update.message.reply_text(
-                "❌ Не удалось разобрать настройки MySQL.\n\n"
-                "Формат:\n"
-                "host username password database\n\n"
-                "Пароль может содержать пробелы.\n"
-                "Название базы должно быть последним."
+                "❌ Неверный формат MySQL.\n\n"
+                "Используй:\n"
+                "<code>HOST USER PASSWORD DATABASE</code>",
+                parse_mode="HTML"
             )
 
             return
 
-        build["mysql"] = mysql
-        build["step"] = 7
-
-        save_data(data)
+        state["mysql"] = mysql
+        state["step"] = 7
 
         try:
             await update.message.delete()
-        except Exception as error:
-            print(
-                "Не удалось удалить MySQL сообщение:",
-                error
-            )
+        except Exception:
+            pass
 
         await context.bot.send_message(
-            chat_id=user_id,
+            chat_id=user.id,
             text=(
-                "• Настройки MySQL приняты, сообщение с паролем удалено.\n\n"
-                "Бот не подключается к базе и не импортирует её автоматически. "
-                "Готовый svoyak.sql получишь после сборки.\n\n"
-                "Шаг 7 из 7 — загрузка мода\n"
-                "Отправь доступ к FTP одной строкой:\n"
-                "IP:PORT login password\n"
-                "Пример: 185.10.20.30:21 mylogin mypassword\n\n"
-                "⚠️ Бот удалит только те файлы и папки в корне FTP, "
-                "которые совпадают по названию с элементами твоего мода.\n"
-                "Другие папки и файлы FTP НЕ будут удалены.\n\n"
-                "📦 Мод будет загружен на FTP.\n"
-                "🗄 svoyak.sql на FTP загружаться НЕ будет.\n\n"
-                "После сборки импортируй svoyak.sql в базу вручную.\n\n"
-                "🔐 Сообщение с доступом будет удалено.\n\n"
-                "Если загрузка не нужна, отправь пропустить."
-            )
+                "Шаг 7 из 7.\n\n"
+                "📁 Если у тебя есть FTP, отправь:\n\n"
+                "<code>IP:PORT LOGIN PASSWORD</code>\n\n"
+                "Например:\n"
+                "<code>127.0.0.1:21 admin 123456</code>\n\n"
+                "Если FTP не нужен — напиши:\n"
+                "<code>пропустить</code>\n\n"
+                "📁 Подготовленный мод будет загружен "
+                "в корень FTP.\n\n"
+                "🗄 <b>svoyak.sql на FTP НЕ загружается.</b>\n"
+                "После сборки SQL будет отправлен тебе "
+                "отдельным файлом для ручного импорта."
+            ),
+            parse_mode="HTML"
         )
 
         return
 
-    # =================================================
-    # STEP 7
-    # =================================================
+    # -------------------------------------------------
+    # ШАГ 7
+    # -------------------------------------------------
 
     if step == 7:
 
         if value.lower() == "пропустить":
 
-            build["ftp"] = None
-            build["step"] = 8
-            build["status"] = "waiting_build"
+            state["ftp"] = None
 
-            save_data(data)
+        else:
 
-            await update.message.reply_text(
-                "FTP-загрузка отключена.\n\n"
-                "⏳ Все настройки получены.\n"
-                "Добавляю проект в очередь сборки..."
-            )
+            ftp = parse_ftp(value)
 
-            await create_build(
-                update,
-                context,
-                data,
-                user
-            )
+            if not ftp:
 
-            return
+                await update.message.reply_text(
+                    "❌ Неверный формат FTP.\n\n"
+                    "Используй:\n"
+                    "<code>IP:PORT LOGIN PASSWORD</code>\n\n"
+                    "Или напиши:\n"
+                    "<code>пропустить</code>",
+                    parse_mode="HTML"
+                )
 
-        ftp = parse_ftp(value)
+                return
 
-        if not ftp:
-
-            await update.message.reply_text(
-                "❌ Неверный формат FTP.\n\n"
-                "Нужно:\n"
-                "IP:PORT login password\n\n"
-                "Пример:\n"
-                "185.10.20.30:21 mylogin mypassword\n\n"
-                "Или отправь:\n"
-                "пропустить"
-            )
-
-            return
-
-        build["ftp"] = ftp
-        build["step"] = 8
-        build["status"] = "waiting_build"
-
-        save_data(data)
+            state["ftp"] = ftp
 
         try:
             await update.message.delete()
-        except Exception as error:
-            print(
-                "Не удалось удалить FTP сообщение:",
-                error
-            )
-
-        await context.bot.send_message(
-            chat_id=user_id,
-            text=(
-                "🔐 Сообщение с доступом к FTP удалено.\n\n"
-                "⏳ Все настройки получены.\n"
-                "Добавляю проект в очередь сборки..."
-            )
-        )
+        except Exception:
+            pass
 
         await create_build(
             update,
             context,
-            data,
-            user
+            user.id,
+            state
+        )
+
+        context.user_data.pop(
+            "free_build",
+            None
         )
 
 
 # =====================================================
-# REPLACEMENTS
+# ЗАМЕНА ТЕКСТА
 # =====================================================
 
 def replace_in_file(
@@ -1068,33 +1056,82 @@ def replace_in_file(
 ):
 
     try:
+
         text = file_path.read_text(
             encoding="utf-8"
         )
+
     except Exception:
         return False
 
-    changed = False
+    original = text
 
     for old, new in replacements.items():
 
-        if old in text:
+        text = text.replace(
+            old,
+            str(new)
+        )
 
-            text = text.replace(
-                old,
-                str(new)
-            )
-
-            changed = True
-
-    if changed:
+    if text != original:
 
         file_path.write_text(
             text,
             encoding="utf-8"
         )
 
-    return changed
+        return True
+
+    return False
+
+
+# =====================================================
+# GENERATE SQL
+# =====================================================
+
+def generate_sql(
+    build,
+    build_dir
+):
+
+    if not SQL_FILE.exists():
+        return None
+
+    sql_path = build_dir / "svoyak.sql"
+
+    shutil.copy2(
+        SQL_FILE,
+        sql_path
+    )
+
+    mysql = build["mysql"]
+
+    replacements = {
+        "YOUR_DB_HOST": mysql["host"],
+        "YOUR_DB_USER": mysql["username"],
+        "YOUR_DB_PASSWORD": mysql["password"],
+        "YOUR_DB_NAME": mysql["database"],
+
+        "PROJECT_NAME": build["project_name"],
+        "OWNER_NICK": build["owner"],
+        "SERVER_ADDRESS": build["server"],
+
+        "{{DB_HOST}}": mysql["host"],
+        "{{DB_USER}}": mysql["username"],
+        "{{DB_PASSWORD}}": mysql["password"],
+        "{{DB_NAME}}": mysql["database"],
+
+        "{{PROJECT_NAME}}": build["project_name"],
+        "{{OWNER_NICK}}": build["owner"],
+        "{{SERVER_ADDRESS}}": build["server"],
+    }
+
+    replace_in_file(
+        sql_path,
+        replacements
+    )
+
+    return sql_path
 
 
 # =====================================================
@@ -1106,6 +1143,12 @@ def prepare_mod(
     build_dir
 ):
 
+    if not MOD_FILE.exists():
+
+        raise RuntimeError(
+            "Файл clean_mod.zip не загружен."
+        )
+
     mod_dir = build_dir / "mod"
 
     if mod_dir.exists():
@@ -1116,136 +1159,74 @@ def prepare_mod(
         exist_ok=True
     )
 
-    if not MOD_FILE.exists():
+    # Безопасное извлечение ZIP
+    with zipfile.ZipFile(
+        MOD_FILE,
+        "r"
+    ) as archive:
 
-        return {
-            "ok": False,
-            "error": (
-                "Администратор ещё не загрузил clean_mod.zip "
-                "в админ-панель."
-            )
-        }
+        root = mod_dir.resolve()
 
-    try:
+        for member in archive.infolist():
 
-        with zipfile.ZipFile(
-            MOD_FILE,
-            "r"
-        ) as archive:
+            target = (
+                mod_dir /
+                member.filename
+            ).resolve()
 
-            bad_file = archive.testzip()
+            try:
+                target.relative_to(root)
+            except ValueError:
+                raise RuntimeError(
+                    "Обнаружен опасный путь в ZIP."
+                )
 
-            if bad_file:
-
-                return {
-                    "ok": False,
-                    "error": (
-                        f"ZIP-архив повреждён. "
-                        f"Проблемный файл: {bad_file}"
-                    )
-                }
-
-            root = mod_dir.resolve()
-
-            for member in archive.infolist():
-
-                target = (
-                    mod_dir / member.filename
-                ).resolve()
-
-                if (
-                    target != root
-                    and not str(target).startswith(
-                        str(root) + os.sep
-                    )
-                ):
-
-                    return {
-                        "ok": False,
-                        "error": (
-                            "clean_mod.zip содержит "
-                            "опасный путь."
-                        )
-                    }
-
-            archive.extractall(
-                mod_dir
-            )
-
-    except zipfile.BadZipFile:
-
-        return {
-            "ok": False,
-            "error": (
-                "clean_mod.zip повреждён "
-                "или не является ZIP-архивом."
-            )
-        }
-
-    except Exception as error:
-
-        return {
-            "ok": False,
-            "error": f"Ошибка распаковки clean_mod.zip: {error}"
-        }
-
-    # =================================================
-    # MYSQL + ДАННЫЕ ПРОЕКТА
-    # =================================================
+        archive.extractall(
+            mod_dir
+        )
 
     mysql = build["mysql"]
+    bonuses = build["bonuses"]
+    links = build["links"]
+
+    server_ip, server_port = build[
+        "server"
+    ].rsplit(":", 1)
 
     replacements = {
-
-        "YOUR_PROJECT_NAME": build["project_name"],
-        "{{PROJECT_NAME}}": build["project_name"],
-
         "YOUR_DB_HOST": mysql["host"],
-        "{{DB_HOST}}": mysql["host"],
-
         "YOUR_DB_USER": mysql["username"],
-        "{{DB_USER}}": mysql["username"],
-
         "YOUR_DB_PASSWORD": mysql["password"],
-        "{{DB_PASSWORD}}": mysql["password"],
-
         "YOUR_DB_NAME": mysql["database"],
+
+        "{{DB_HOST}}": mysql["host"],
+        "{{DB_USER}}": mysql["username"],
+        "{{DB_PASSWORD}}": mysql["password"],
         "{{DB_NAME}}": mysql["database"],
 
-        "YOUR_OWNER_NICK": build["owner"],
+        "PROJECT_NAME": build["project_name"],
+        "{{PROJECT_NAME}}": build["project_name"],
+
+        "OWNER_NICK": build["owner"],
         "{{OWNER_NICK}}": build["owner"],
 
-        "YOUR_SERVER_IP": build["server"]["ip"],
-        "{{SERVER_IP}}": build["server"]["ip"],
+        "SERVER_ADDRESS": build["server"],
+        "{{SERVER_ADDRESS}}": build["server"],
 
-        "YOUR_SERVER_PORT": build["server"]["port"],
-        "{{SERVER_PORT}}": build["server"]["port"],
+        "{{SERVER_IP}}": server_ip,
+        "{{SERVER_PORT}}": server_port,
 
-        "YOUR_TELEGRAM": build["links"]["telegram"],
-        "{{TELEGRAM}}": build["links"]["telegram"],
+        "{{TELEGRAM}}": links["telegram"],
+        "{{VK}}": links["vk"],
+        "{{WEBSITE}}": links["website"],
 
-        "YOUR_VK": build["links"]["vk"],
-        "{{VK}}": build["links"]["vk"],
-
-        "YOUR_WEBSITE": build["links"]["website"],
-        "{{WEBSITE}}": build["links"]["website"],
-
-        "YOUR_DONATE": build["bonuses"]["donate"],
-        "{{DONATE}}": build["bonuses"]["donate"],
-
-        "YOUR_MONEY": build["bonuses"]["money"],
-        "{{MONEY}}": build["bonuses"]["money"],
-
-        "YOUR_VIP": build["bonuses"]["vip"],
-        "{{VIP}}": build["bonuses"]["vip"],
-
-        "YOUR_LEVEL": build["bonuses"]["level"],
-        "{{LEVEL}}": build["bonuses"]["level"],
-
-        "TEST SVOYAK": build["project_name"],
+        "{{DONATE}}": bonuses["donate"],
+        "{{MONEY}}": bonuses["money"],
+        "{{VIP}}": bonuses["vip"],
+        "{{LEVEL}}": bonuses["level"],
     }
 
-    text_extensions = (
+    text_extensions = {
         ".cpp",
         ".c",
         ".h",
@@ -1256,7 +1237,6 @@ def prepare_mod(
         ".ini",
         ".json",
         ".txt",
-        ".sql",
         ".xml",
         ".gradle",
         ".properties",
@@ -1265,147 +1245,48 @@ def prepare_mod(
         ".java",
         ".kt",
         ".js",
-    )
+    }
 
     for file_path in mod_dir.rglob("*"):
 
         if not file_path.is_file():
             continue
 
+        # SQL отдельно не обрабатываем
+        if file_path.suffix.lower() == ".sql":
+            continue
+
         if file_path.suffix.lower() not in text_extensions:
             continue
 
-        try:
-            replace_in_file(
-                file_path,
-                replacements
-            )
-        except Exception as error:
-            print(
-                "Ошибка замены:",
-                file_path,
-                error
-            )
+        replace_in_file(
+            file_path,
+            replacements
+        )
 
-    # =================================================
-    # SQL
-    # =================================================
-
+    # SQL создаётся отдельно
     sql_path = generate_sql(
         build,
         build_dir
     )
 
-    if not sql_path:
+    # Полностью удаляем SQL из FTP-мода
+    for sql_file in mod_dir.rglob("*"):
 
-        return {
-            "ok": False,
-            "error": "Не удалось подготовить svoyak.sql."
-        }
+        if not sql_file.is_file():
+            continue
 
-    # SQL остаётся в локальной сборке,
-    # но НЕ должен загружаться на FTP.
-    #
-    # В мод также добавляем SQL, чтобы при необходимости
-    # он присутствовал в архиве локальной сборки.
-    try:
+        if sql_file.suffix.lower() == ".sql":
 
-        shutil.copy2(
-            sql_path,
-            mod_dir / "svoyak.sql"
-        )
-
-    except Exception as error:
-
-        return {
-            "ok": False,
-            "error": f"Не удалось добавить svoyak.sql в мод: {error}"
-        }
+            try:
+                sql_file.unlink()
+            except Exception:
+                pass
 
     return {
-        "ok": True,
-        "mod_dir": mod_dir
+        "mod_dir": mod_dir,
+        "sql_path": sql_path
     }
-
-
-# =====================================================
-# SQL
-# =====================================================
-
-def generate_sql(
-    build,
-    build_dir
-):
-
-    if not SQL_FILE.exists():
-
-        print("svoyak.sql отсутствует")
-
-        return None
-
-    output = build_dir / "svoyak.sql"
-
-    try:
-
-        shutil.copy2(
-            SQL_FILE,
-            output
-        )
-
-    except Exception as error:
-
-        print(
-            "Ошибка копирования SQL:",
-            error
-        )
-
-        return None
-
-    replacements = {
-
-        "YOUR_DB_HOST": build["mysql"]["host"],
-        "{{DB_HOST}}": build["mysql"]["host"],
-
-        "YOUR_DB_USER": build["mysql"]["username"],
-        "{{DB_USER}}": build["mysql"]["username"],
-
-        "YOUR_DB_PASSWORD": build["mysql"]["password"],
-        "{{DB_PASSWORD}}": build["mysql"]["password"],
-
-        "YOUR_DB_NAME": build["mysql"]["database"],
-        "{{DB_NAME}}": build["mysql"]["database"],
-
-        "YOUR_OWNER_NICK": build["owner"],
-        "{{OWNER_NICK}}": build["owner"],
-
-        "YOUR_PROJECT_NAME": build["project_name"],
-        "{{PROJECT_NAME}}": build["project_name"],
-
-        "YOUR_SERVER_IP": build["server"]["ip"],
-        "{{SERVER_IP}}": build["server"]["ip"],
-
-        "YOUR_SERVER_PORT": build["server"]["port"],
-        "{{SERVER_PORT}}": build["server"]["port"],
-
-        "YOUR_DONATE": build["bonuses"]["donate"],
-        "{{DONATE}}": build["bonuses"]["donate"],
-
-        "YOUR_MONEY": build["bonuses"]["money"],
-        "{{MONEY}}": build["bonuses"]["money"],
-
-        "YOUR_VIP": build["bonuses"]["vip"],
-        "{{VIP}}": build["bonuses"]["vip"],
-
-        "YOUR_LEVEL": build["bonuses"]["level"],
-        "{{LEVEL}}": build["bonuses"]["level"],
-    }
-
-    replace_in_file(
-        output,
-        replacements
-    )
-
-    return output
 
 
 # =====================================================
@@ -1416,137 +1297,96 @@ def prepare_jni_project():
 
     if not JNI_FILE.exists():
 
-        return {
-            "ok": False,
-            "error": (
-                "JNI-проект не загружен. "
-                "Администратор должен загрузить "
-                "jni_project.zip через /admin."
-            )
-        }
+        raise RuntimeError(
+            "Файл jni_project.zip не загружен."
+        )
 
     if JNI_DIR.exists():
-
-        try:
-            shutil.rmtree(JNI_DIR)
-
-        except Exception as error:
-
-            return {
-                "ok": False,
-                "error": (
-                    f"Не удалось очистить старый JNI-проект: "
-                    f"{error}"
-                )
-            }
+        shutil.rmtree(JNI_DIR)
 
     JNI_DIR.mkdir(
         parents=True,
         exist_ok=True
     )
 
-    try:
+    with zipfile.ZipFile(
+        JNI_FILE,
+        "r"
+    ) as archive:
 
-        with zipfile.ZipFile(
-            JNI_FILE,
-            "r"
-        ) as archive:
+        root = JNI_DIR.resolve()
 
-            bad_file = archive.testzip()
+        for member in archive.infolist():
 
-            if bad_file:
+            target = (
+                JNI_DIR /
+                member.filename
+            ).resolve()
 
-                return {
-                    "ok": False,
-                    "error": (
-                        f"JNI ZIP повреждён. "
-                        f"Проблемный файл: {bad_file}"
-                    )
-                }
+            try:
+                target.relative_to(root)
+            except ValueError:
+                raise RuntimeError(
+                    "Обнаружен опасный путь в JNI ZIP."
+                )
 
-            root = JNI_DIR.resolve()
-
-            for member in archive.infolist():
-
-                target = (
-                    JNI_DIR / member.filename
-                ).resolve()
-
-                if (
-                    target != root
-                    and not str(target).startswith(
-                        str(root) + os.sep
-                    )
-                ):
-
-                    return {
-                        "ok": False,
-                        "error": (
-                            "JNI ZIP содержит опасный путь."
-                        )
-                    }
-
-            archive.extractall(
-                JNI_DIR
-            )
-
-    except zipfile.BadZipFile:
-
-        return {
-            "ok": False,
-            "error": (
-                "jni_project.zip повреждён "
-                "или не является ZIP-архивом."
-            )
-        }
-
-    except Exception as error:
-
-        return {
-            "ok": False,
-            "error": (
-                f"Ошибка распаковки JNI-проекта: {error}"
-            )
-        }
-
-    current_dir = JNI_DIR
-
-    try:
-
-        items = list(
-            JNI_DIR.iterdir()
+        archive.extractall(
+            JNI_DIR
         )
 
-        directories = [
-            item
-            for item in items
-            if item.is_dir()
-        ]
+    entries = list(
+        JNI_DIR.iterdir()
+    )
 
-        files = [
-            item
-            for item in items
-            if item.is_file()
-        ]
+    if (
+        len(entries) == 1
+        and entries[0].is_dir()
+    ):
 
-        if (
-            len(directories) == 1
-            and not files
-        ):
+        project_dir = entries[0]
 
-            current_dir = directories[0]
+    else:
 
-    except Exception:
-        pass
+        project_dir = JNI_DIR
 
     return {
         "ok": True,
-        "dir": current_dir
+        "dir": project_dir
     }
 
 
 # =====================================================
-# CLIENT / JNI BUILD
+# GRADLE WRAPPER
+# =====================================================
+
+def find_gradle_wrapper(
+    project_dir
+):
+
+    possible = [
+        project_dir / "gradlew",
+        project_dir / "android" / "gradlew",
+    ]
+
+    for path in possible:
+
+        if path.exists() and path.is_file():
+            return path
+
+    found = list(
+        project_dir.rglob("gradlew")
+    )
+
+    for path in found:
+
+        if path.is_file():
+            return path
+
+    return None
+
+
+# =====================================================
+# JNI BUILD
 # =====================================================
 
 def build_client(
@@ -1554,535 +1394,441 @@ def build_client(
     build_dir
 ):
 
-    output = build_dir / "libsvoyak.so"
+    prepared_jni = prepare_jni_project()
 
-    jni_result = prepare_jni_project()
+    project_dir = prepared_jni["dir"]
 
-    if not jni_result.get("ok"):
-
-        print(
-            "JNI ERROR:",
-            jni_result.get("error")
-        )
-
-        return None
-
-    jni_dir = Path(
-        jni_result["dir"]
+    gradlew = find_gradle_wrapper(
+        project_dir
     )
 
-    if not BUILD_SCRIPT.exists():
+    if not gradlew:
 
-        print(
-            "BUILD SCRIPT NOT FOUND:",
-            BUILD_SCRIPT
+        raise RuntimeError(
+            "В jni_project.zip не найден gradlew.\n\n"
+            "Добавь полноценный Gradle/JNI проект "
+            "с файлом gradlew."
         )
 
-        return None
+    try:
+
+        os.chmod(
+            gradlew,
+            0o755
+        )
+
+    except Exception:
+        pass
+
+    server_ip, server_port = build[
+        "server"
+    ].rsplit(":", 1)
 
     env = os.environ.copy()
 
-    env["SERVER_IP"] = str(
-        build["server"]["ip"]
-    )
+    env["SERVER_IP"] = server_ip
+    env["SERVER_PORT"] = server_port
+    env["SERVER_ADDRESS"] = build["server"]
 
-    env["SERVER_PORT"] = str(
-        build["server"]["port"]
-    )
-
-    env["SERVER_ADDRESS"] = str(
-        build["server"]["address"]
-    )
-
-    env["PROJECT_NAME"] = str(
-        build["project_name"]
-    )
-
-    env["OWNER_NICK"] = str(
-        build["owner"]
-    )
+    env["PROJECT_NAME"] = build["project_name"]
+    env["OWNER_NICK"] = build["owner"]
 
     env["ANDROID_ABI"] = "arm64-v8a"
-
     env["ANDROID_NDK_VERSION"] = "r25c"
 
     env["SVOYAK_BUILD_DIR"] = str(
         build_dir.resolve()
     )
 
-    try:
+    # =================================================
+    # СБОРКА БЕЗ build_client.sh
+    # =================================================
 
-        print(
-            "================================================="
-        )
+    commands = [
+        [
+            str(gradlew),
+            "assembleRelease"
+        ],
+        [
+            str(gradlew),
+            "assembleDebug"
+        ],
+    ]
 
-        print(
-            "SVOYAK JNI BUILD"
-        )
+    last_output = ""
 
-        print(
-            "JNI DIR:",
-            jni_dir
-        )
+    build_success = False
 
-        print(
-            "SERVER:",
-            build["server"]["address"]
-        )
-
-        print(
-            "PROJECT:",
-            build["project_name"]
-        )
-
-        print(
-            "OWNER:",
-            build["owner"]
-        )
-
-        print(
-            "ABI: arm64-v8a"
-        )
-
-        print(
-            "NDK: r25c"
-        )
-
-        print(
-            "================================================="
-        )
-
-        result = subprocess.run(
-            [
-                "bash",
-                str(BUILD_SCRIPT.resolve())
-            ],
-            cwd=str(jni_dir),
-            capture_output=True,
-            text=True,
-            timeout=900,
-            env=env
-        )
-
-        print(
-            "BUILD RETURN CODE:",
-            result.returncode
-        )
-
-        if result.stdout:
-
-            print(
-                "BUILD STDOUT:"
-            )
-
-            print(
-                result.stdout[-10000:]
-            )
-
-        if result.stderr:
-
-            print(
-                "BUILD STDERR:"
-            )
-
-            print(
-                result.stderr[-10000:]
-            )
-
-        if result.returncode != 0:
-            return None
-
-        candidates = [
-
-            jni_dir / "libsvoyak.so",
-
-            jni_dir / "build" / "libsvoyak.so",
-
-            jni_dir / "output" / "libsvoyak.so",
-
-            jni_dir / "libs" / "libsvoyak.so",
-
-            jni_dir / "app" / "build" / "intermediates"
-            / "cxx" / "Release" / "arm64-v8a"
-            / "obj" / "arm64-v8a"
-            / "libsvoyak.so",
-
-            jni_dir / "app" / "build" / "intermediates"
-            / "cxx" / "Release"
-            / "obj" / "arm64-v8a"
-            / "libsvoyak.so",
-
-            jni_dir / "app" / "build" / "intermediates"
-            / "cxx" / "Debug"
-            / "obj" / "arm64-v8a"
-            / "libsvoyak.so",
-        ]
+    for command in commands:
 
         try:
 
-            for found in jni_dir.rglob(
-                "libsvoyak.so"
-            ):
-
-                if found not in candidates:
-
-                    candidates.append(
-                        found
-                    )
-
-        except Exception as error:
-
-            print(
-                "Ошибка поиска библиотеки:",
-                error
+            result = subprocess.run(
+                command,
+                cwd=project_dir,
+                env=env,
+                capture_output=True,
+                text=True,
+                timeout=900
             )
 
-        for candidate in candidates:
+            last_output = (
+                result.stdout
+                + "\n"
+                + result.stderr
+            )
 
-            try:
+            if result.returncode == 0:
 
-                if not candidate.exists():
-                    continue
+                build_success = True
+                break
 
-                if candidate.stat().st_size <= 0:
-                    continue
+        except subprocess.TimeoutExpired:
 
-                shutil.copy2(
-                    candidate,
-                    output
-                )
+            raise RuntimeError(
+                "Сборка JNI превысила 15 минут."
+            )
 
-                if (
-                    output.exists()
-                    and output.stat().st_size > 0
-                ):
+    if not build_success:
 
-                    print(
-                        "JNI BUILD SUCCESS:",
-                        output
-                    )
-
-                    return output
-
-            except Exception as error:
-
-                print(
-                    "Ошибка копирования:",
-                    candidate,
-                    error
-                )
-
-    except subprocess.TimeoutExpired:
-
-        print(
-            "JNI-сборка превысила лимит 900 секунд."
+        raise RuntimeError(
+            "Ошибка Gradle/JNI сборки:\n\n"
+            + last_output[-8000:]
         )
 
-    except Exception as error:
+    # =================================================
+    # ПОИСК LIBSVOYAK.SO
+    # =================================================
 
-        print(
-            "Ошибка JNI-сборки:",
-            error
-        )
+    candidates = []
 
-    return None
+    search_dirs = [
+        project_dir / "app" / "build",
+        project_dir / "build",
+        project_dir,
+    ]
 
+    for base in search_dirs:
 
-# =====================================================
-# FTP HELPERS
-# =====================================================
-
-def ftp_is_directory(ftp, name):
-    """
-    Проверяет, является ли элемент директорией.
-    """
-
-    current = ftp.pwd()
-
-    try:
-
-        ftp.cwd(name)
-
-        ftp.cwd(current)
-
-        return True
-
-    except Exception:
+        if not base.exists():
+            continue
 
         try:
-            ftp.cwd(current)
+
+            candidates.extend(
+                base.rglob("libsvoyak.so")
+            )
+
         except Exception:
             pass
 
-        return False
+    # Если название отличается,
+    # ищем любую .so
+    if not candidates:
 
+        for base in search_dirs:
 
-def ftp_delete_recursive(ftp, path):
-    """
-    Удаляет конкретную папку со всем содержимым.
-    Вызывается ТОЛЬКО для папки, которую бот решил
-    заменить из состава нового мода.
-    """
-
-    current = ftp.pwd()
-
-    try:
-        ftp.cwd(path)
-    except Exception:
-        return False
-
-    try:
-
-        try:
-            items = ftp.nlst()
-        except Exception:
-            items = []
-
-        for item in items:
-
-            name = os.path.basename(
-                item.rstrip("/")
-            )
-
-            if not name:
-                continue
-
-            if name in (".", ".."):
+            if not base.exists():
                 continue
 
             try:
 
-                if ftp_is_directory(
-                    ftp,
-                    name
-                ):
-
-                    ftp_delete_recursive(
-                        ftp,
-                        name
-                    )
-
-                    try:
-                        ftp.rmd(name)
-                    except Exception:
-                        pass
-
-                else:
-
-                    try:
-                        ftp.delete(name)
-                    except Exception:
-                        pass
-
-            except Exception as error:
-
-                print(
-                    "FTP delete item error:",
-                    name,
-                    error
+                candidates.extend(
+                    base.rglob("*.so")
                 )
 
-        ftp.cwd("..")
+            except Exception:
+                pass
 
-        try:
-            ftp.rmd(path)
-        except Exception:
-            pass
+    if not candidates:
 
-        return True
-
-    except Exception as error:
-
-        print(
-            "FTP recursive delete error:",
-            path,
-            error
+        raise RuntimeError(
+            "Сборка завершилась, "
+            "но .so библиотека не найдена."
         )
 
-        try:
-            ftp.cwd(current)
-        except Exception:
-            pass
+    # Приоритет arm64-v8a
+    arm64_candidates = [
+        x for x in candidates
+        if "arm64-v8a" in str(x)
+    ]
 
-        return False
+    if arm64_candidates:
+        source = arm64_candidates[0]
+    else:
+        source = candidates[0]
 
+    output = (
+        build_dir /
+        "libsvoyak.so"
+    )
 
-def ftp_delete_item(ftp, name):
-    """
-    Удаляет один конкретный элемент из FTP.
-    Ничего другого не трогает.
-    """
+    shutil.copy2(
+        source,
+        output
+    )
 
-    try:
-
-        if name in (".", ".."):
-            return False
-
-        # Сначала проверяем папку
-        if ftp_is_directory(
-            ftp,
-            name
-        ):
-
-            print(
-                "FTP: удаляем старую папку мода:",
-                name
-            )
-
-            return ftp_delete_recursive(
-                ftp,
-                name
-            )
-
-        # Иначе это файл
-        print(
-            "FTP: удаляем старый файл мода:",
-            name
-        )
-
-        try:
-            ftp.delete(name)
-            return True
-
-        except Exception as error:
-
-            print(
-                "FTP: не удалось удалить файл:",
-                name,
-                error
-            )
-
-            return False
-
-    except Exception as error:
-
-        print(
-            "FTP delete error:",
-            name,
-            error
-        )
-
-        return False
+    return output
 
 
 # =====================================================
 # FTP
 # =====================================================
 
+def ftp_connect(
+    ftp_config
+):
+
+    ftp = FTP()
+
+    ftp.connect(
+        ftp_config["host"],
+        ftp_config["port"],
+        timeout=30
+    )
+
+    ftp.login(
+        ftp_config["username"],
+        ftp_config["password"]
+    )
+
+    ftp.set_pasv(True)
+
+    return ftp
+
+
+def ftp_name(value):
+
+    value = str(value)
+
+    value = value.rstrip("/")
+
+    return os.path.basename(value)
+
+
+def delete_remote_tree(
+    ftp,
+    name
+):
+
+    name = ftp_name(name)
+
+    if not name or name in (
+        ".",
+        ".."
+    ):
+        return
+
+    parent = ftp.pwd()
+
+    # -------------------------------------------------
+    # Пробуем открыть как директорию
+    # -------------------------------------------------
+
+    try:
+
+        ftp.cwd(name)
+
+    except Exception:
+
+        # Не папка — удаляем как файл
+        try:
+            ftp.cwd(parent)
+        except Exception:
+            pass
+
+        try:
+
+            ftp.delete(name)
+
+            return
+
+        except Exception as e:
+
+            raise RuntimeError(
+                f"Не удалось удалить FTP-файл "
+                f"{name}: {e}"
+            )
+
+    # -------------------------------------------------
+    # Мы внутри директории
+    # -------------------------------------------------
+
+    try:
+
+        try:
+            entries = ftp.nlst()
+        except Exception:
+            entries = []
+
+        for entry in entries:
+
+            child = ftp_name(entry)
+
+            if child in (
+                "",
+                ".",
+                ".."
+            ):
+                continue
+
+            delete_remote_tree(
+                ftp,
+                child
+            )
+
+        ftp.cwd("..")
+
+        ftp.rmd(name)
+
+    except Exception:
+
+        try:
+            ftp.cwd(parent)
+        except Exception:
+            pass
+
+        raise
+
+
+def get_remote_names(ftp):
+
+    try:
+
+        entries = ftp.nlst()
+
+    except Exception:
+
+        return []
+
+    names = []
+
+    for entry in entries:
+
+        name = ftp_name(entry)
+
+        if name and name not in (
+            ".",
+            ".."
+        ):
+
+            names.append(name)
+
+    return names
+
+
+def has_uploadable_content(
+    path
+):
+
+    path = Path(path)
+
+    if not path.exists():
+        return False
+
+    for item in path.iterdir():
+
+        if item.is_dir():
+
+            if has_uploadable_content(item):
+                return True
+
+        elif item.is_file():
+
+            if item.suffix.lower() != ".sql":
+                return True
+
+    return False
+
+
 def upload_ftp(
     ftp_config,
     local_dir
 ):
 
-    if not ftp_config:
+    ftp = ftp_connect(
+        ftp_config
+    )
 
-        return {
-            "ok": True,
-            "error": None
-        }
-
-    ftp = FTP()
+    uploaded = 0
+    deleted = 0
 
     try:
 
-        print(
-            f"FTP: подключение к "
-            f"{ftp_config['ip']}:{ftp_config['port']}"
-        )
-
-        ftp.connect(
-            ftp_config["ip"],
-            ftp_config["port"],
-            timeout=30
-        )
-
-        ftp.login(
-            ftp_config["login"],
-            ftp_config["password"]
-        )
-
-        ftp.set_pasv(True)
-
-        # =================================================
-        # КОРЕНЬ FTP
-        # =================================================
-
         ftp.cwd("/")
 
-        print(
-            "FTP ROOT:",
-            ftp.pwd()
+        local_dir = Path(
+            local_dir
         )
 
-        local_path = Path(local_dir)
-
         # =================================================
-        # 1. УЗНАЁМ, ЧТО ИМЕННО ЕСТЬ В МОДЕ
-        # =================================================
-        #
-        # ВАЖНО:
-        #
-        # Мы НЕ удаляем весь FTP.
-        #
-        # Удаляем только те элементы корня FTP,
-        # которые совпадают по имени с элементами
-        # нашего нового мода.
-        #
-        # Например:
-        #
-        # FTP:
-        #   gamemodes/
-        #   filterscripts/
-        #   scriptfiles/
-        #   чужая_папка/
-        #
-        # Новый мод:
-        #   gamemodes/
-        #   filterscripts/
-        #   scriptfiles/
-        #
-        # Будут удалены только:
-        #   gamemodes/
-        #   filterscripts/
-        #   scriptfiles/
-        #
-        # "чужая_папка/" останется.
-        #
-        # SQL НЕ участвует в удалении/загрузке.
+        # 1. Определяем, что именно новый мод заменит
         # =================================================
 
-        local_top_items = []
+        local_items = []
 
-        for item in local_path.iterdir():
+        for item in local_dir.iterdir():
 
-            if item.name.lower() == "svoyak.sql":
+            # SQL не участвует
+            if (
+                item.is_file()
+                and item.suffix.lower() == ".sql"
+            ):
                 continue
 
-            local_top_items.append(
-                item.name
-            )
+            if item.is_dir():
 
-        print(
-            "FTP: элементы нового мода:",
-            local_top_items
+                if not has_uploadable_content(
+                    item
+                ):
+                    continue
+
+                local_items.append(item)
+
+            elif item.is_file():
+
+                local_items.append(item)
+
+        remote_names = set(
+            get_remote_names(ftp)
         )
 
         # =================================================
-        # 2. УДАЛЯЕМ ТОЛЬКО СОВПАДАЮЩИЕ ЭЛЕМЕНТЫ
+        # 2. УДАЛЯЕМ СТАРЫЕ ВЕРСИИ
+        #
+        # ВАЖНО:
+        # остальные папки/файлы FTP НЕ ТРОГАЕМ.
         # =================================================
 
-        for item_name in local_top_items:
+        for item in local_items:
 
-            ftp_delete_item(
-                ftp,
-                item_name
-            )
+            name = item.name
 
-        # Возвращаемся в корень
-        ftp.cwd("/")
+            if name not in remote_names:
+                continue
+
+            try:
+
+                ftp.cwd("/")
+
+                delete_remote_tree(
+                    ftp,
+                    name
+                )
+
+                deleted += 1
+
+                ftp.cwd("/")
+
+            except Exception as e:
+
+                raise RuntimeError(
+                    f"Не удалось заменить старый "
+                    f"FTP-объект {name}: {e}"
+                )
 
         # =================================================
-        # 3. СОЗДАНИЕ ПАПКИ
+        # 3. СОЗДАНИЕ ПАПОК
         # =================================================
 
         def ensure_remote_dir(name):
@@ -2090,8 +1836,7 @@ def upload_ftp(
             try:
 
                 ftp.cwd(name)
-
-                return True
+                return
 
             except Exception:
                 pass
@@ -2100,47 +1845,26 @@ def upload_ftp(
 
                 ftp.mkd(name)
 
-                ftp.cwd(name)
+            except Exception:
+                pass
 
-                return True
-
-            except Exception as error:
-
-                print(
-                    "FTP MKD ERROR:",
-                    name,
-                    error
-                )
-
-                return False
+            ftp.cwd(name)
 
         # =================================================
-        # 4. ЗАГРУЗКА МОДА
+        # 4. ЗАГРУЗКА
         # =================================================
 
-        def upload_directory(local_current):
+        def upload_directory(
+            local_path
+        ):
 
-            local_current = Path(
-                local_current
+            nonlocal uploaded
+
+            local_path = Path(
+                local_path
             )
 
-            for item in local_current.iterdir():
-
-                # -----------------------------------------
-                # SQL НИКОГДА НЕ ЗАГРУЖАЕМ НА FTP
-                # -----------------------------------------
-
-                if (
-                    item.is_file()
-                    and item.name.lower() == "svoyak.sql"
-                ):
-
-                    print(
-                        "FTP: SQL пропущен:",
-                        item
-                    )
-
-                    continue
+            for item in local_path.iterdir():
 
                 # -----------------------------------------
                 # ПАПКА
@@ -2148,14 +1872,14 @@ def upload_ftp(
 
                 if item.is_dir():
 
-                    if not ensure_remote_dir(
-                        item.name
+                    if not has_uploadable_content(
+                        item
                     ):
+                        continue
 
-                        raise RuntimeError(
-                            "Не удалось создать/открыть "
-                            f"FTP-папку: {item.name}"
-                        )
+                    ensure_remote_dir(
+                        item.name
+                    )
 
                     upload_directory(
                         item
@@ -2163,109 +1887,54 @@ def upload_ftp(
 
                     ftp.cwd("..")
 
+                    continue
+
                 # -----------------------------------------
                 # ФАЙЛ
                 # -----------------------------------------
 
-                else:
+                if not item.is_file():
+                    continue
 
-                    print(
-                        "FTP: загрузка:",
-                        item
+                # SQL НИКОГДА НЕ ЗАГРУЖАЕМ
+                if item.suffix.lower() == ".sql":
+                    continue
+
+                with open(
+                    item,
+                    "rb"
+                ) as file:
+
+                    ftp.storbinary(
+                        f"STOR {item.name}",
+                        file
                     )
 
-                    with open(
-                        item,
-                        "rb"
-                    ) as file:
-
-                        ftp.storbinary(
-                            f"STOR {item.name}",
-                            file
-                        )
+                uploaded += 1
 
         ftp.cwd("/")
 
         upload_directory(
-            local_path
+            local_dir
         )
 
         ftp.cwd("/")
 
-        ftp.quit()
-
-        print(
-            "FTP: загрузка завершена."
-        )
-
         return {
-            "ok": True,
-            "error": None
+            "uploaded": uploaded,
+            "deleted": deleted
         }
 
-    except ConnectionRefusedError:
-
-        error_text = (
-            "FTP-сервер отказал в подключении "
-            "(Connection refused). Проверь IP, порт, "
-            "запущен ли FTP-сервис и открыт ли порт."
-        )
-
-        print(
-            "FTP ERROR:",
-            error_text
-        )
+    finally:
 
         try:
-            ftp.close()
+            ftp.quit()
         except Exception:
-            pass
 
-        return {
-            "ok": False,
-            "error": error_text
-        }
-
-    except TimeoutError:
-
-        error_text = (
-            "Тайм-аут подключения к FTP. "
-            "Проверь IP, порт и firewall."
-        )
-
-        print(
-            "FTP ERROR:",
-            error_text
-        )
-
-        try:
-            ftp.close()
-        except Exception:
-            pass
-
-        return {
-            "ok": False,
-            "error": error_text
-        }
-
-    except Exception as error:
-
-        error_text = str(error)
-
-        print(
-            "FTP ERROR:",
-            error_text
-        )
-
-        try:
-            ftp.close()
-        except Exception:
-            pass
-
-        return {
-            "ok": False,
-            "error": error_text
-        }
+            try:
+                ftp.close()
+            except Exception:
+                pass
 
 
 # =====================================================
@@ -2277,177 +1946,44 @@ def perform_build(
     build_dir
 ):
 
-    try:
+    required = [
+        MOD_FILE,
+        SQL_FILE,
+        JNI_FILE,
+    ]
 
-        # -------------------------------------------------
-        # CLEAN MOD
-        # -------------------------------------------------
+    for file in required:
 
-        if not MOD_FILE.exists():
+        if not file.exists():
 
-            return {
-                "status": "error",
-                "error": (
-                    "clean_mod.zip отсутствует. "
-                    "Администратор должен загрузить его "
-                    "через /admin."
-                )
-            }
-
-        # -------------------------------------------------
-        # SQL
-        # -------------------------------------------------
-
-        if not SQL_FILE.exists():
-
-            return {
-                "status": "error",
-                "error": (
-                    "svoyak.sql отсутствует. "
-                    "Администратор должен загрузить его "
-                    "через /admin."
-                )
-            }
-
-        # -------------------------------------------------
-        # JNI
-        # -------------------------------------------------
-
-        if not JNI_FILE.exists():
-
-            return {
-                "status": "error",
-                "error": (
-                    "jni_project.zip отсутствует. "
-                    "Администратор должен загрузить JNI-проект "
-                    "через /admin."
-                )
-            }
-
-        # -------------------------------------------------
-        # BUILD SCRIPT
-        # -------------------------------------------------
-
-        if not BUILD_SCRIPT.exists():
-
-            return {
-                "status": "error",
-                "error": (
-                    "build_client.sh отсутствует."
-                )
-            }
-
-        # -------------------------------------------------
-        # PREPARE MOD
-        # -------------------------------------------------
-
-        prepared = prepare_mod(
-            build,
-            build_dir
-        )
-
-        if not prepared.get("ok"):
-
-            return {
-                "status": "error",
-                "error": prepared.get(
-                    "error",
-                    "Не удалось подготовить мод."
-                )
-            }
-
-        # -------------------------------------------------
-        # SQL
-        # -------------------------------------------------
-
-        sql_path = build_dir / "svoyak.sql"
-
-        if not sql_path.exists():
-
-            return {
-                "status": "error",
-                "error": "svoyak.sql не был создан."
-            }
-
-        # -------------------------------------------------
-        # JNI BUILD
-        # -------------------------------------------------
-
-        lib_path = build_client(
-            build,
-            build_dir
-        )
-
-        if not lib_path:
-
-            return {
-                "status": "error",
-                "error": (
-                    "libsvoyak.so не создана.\n\n"
-                    "Проверьте:\n"
-                    "🧩 JNI-проект загружен\n"
-                    "🧰 build_client.sh существует\n"
-                    "🛠 NDK r25c установлен\n"
-                    "📱 ABI = arm64-v8a\n"
-                    "🔨 JNI-проект действительно собирает "
-                    "libsvoyak.so"
-                )
-            }
-
-        # -------------------------------------------------
-        # FTP
-        # -------------------------------------------------
-
-        ftp_result = {
-            "ok": True,
-            "error": None
-        }
-
-        if build.get("ftp"):
-
-            ftp_result = upload_ftp(
-                build["ftp"],
-                prepared["mod_dir"]
+            raise RuntimeError(
+                f"Не найден файл: {file.name}"
             )
 
-            if not ftp_result["ok"]:
+    prepared = prepare_mod(
+        build,
+        build_dir
+    )
 
-                return {
-                    "status": "error",
-                    "error": (
-                        "Мод и библиотека собраны, "
-                        "но FTP-загрузка не удалась: "
-                        + ftp_result["error"]
-                    ),
-                    "sql": str(sql_path),
-                    "lib": str(lib_path),
-                    "ftp_uploaded": False
-                }
+    lib_file = build_client(
+        build,
+        build_dir
+    )
 
-        # -------------------------------------------------
-        # SUCCESS
-        # -------------------------------------------------
+    ftp_result = None
 
-        return {
-            "status": "success",
-            "sql": str(sql_path),
-            "lib": str(lib_path),
-            "ftp_uploaded": bool(
-                build.get("ftp")
-            )
-        }
+    if build.get("ftp"):
 
-    except Exception as error:
-
-        print(
-            "BUILD ERROR:",
-            error
+        ftp_result = upload_ftp(
+            build["ftp"],
+            prepared["mod_dir"]
         )
 
-        return {
-            "status": "error",
-            "error": str(error)
-        }
+    return {
+        "sql": prepared["sql_path"],
+        "lib": lib_file,
+        "ftp": ftp_result
+    }
 
 
 # =====================================================
@@ -2457,276 +1993,188 @@ def perform_build(
 async def create_build(
     update,
     context,
-    data,
-    user
+    user_id,
+    build
 ):
-
-    user_id = str(
-        update.effective_user.id
-    )
-
-    build = user.get(
-        "free_build"
-    )
-
-    if not build:
-        return
 
     build_id = (
         f"{user_id}_"
         f"{int(time.time())}"
     )
 
-    build_dir = BASE_DIR / build_id
+    build_dir = (
+        BASE_DIR /
+        str(build_id)
+    )
 
     build_dir.mkdir(
         parents=True,
         exist_ok=True
     )
 
-    data["builds"][build_id] = {
-        "user_id": user_id,
-        "project_name": build["project_name"],
-        "status": "building"
-    }
+    data = load_data()
+
+    data["builds"][
+        str(build_id)
+    ] = build
 
     save_data(data)
 
-    await context.bot.send_message(
-        chat_id=int(user_id),
+    status_message = await context.bot.send_message(
+        chat_id=user_id,
         text=(
-            "🔨 СБОРКА ПРОЕКТА\n"
-            "━━━━━━━━━━━━━━━━━━━━\n\n"
-            "⏳ Настройки приняты.\n"
-            "📦 Проверяю чистый мод.\n"
-            "🧰 Подготавливаю мод.\n"
-            "🗄 Формирую svoyak.sql.\n"
-            "🧩 Распаковываю JNI-проект.\n"
-            "📱 Собираю libsvoyak.so.\n"
-            "⚙️ ABI: arm64-v8a\n"
-            "🛠 NDK: r25c\n\n"
-            "Статус: сборка запущена."
+            "⏳ <b>Начинаю сборку...</b>\n\n"
+            "1️⃣ Подготавливаю мод\n"
+            "2️⃣ Генерирую SQL\n"
+            "3️⃣ Собираю JNI через Gradle\n"
+            "4️⃣ Получаю libsvoyak.so\n"
+            "5️⃣ Загружаю мод на FTP\n\n"
+            "⏱ Это может занять некоторое время."
+        ),
+        parse_mode="HTML"
+    )
+
+    loop = asyncio.get_running_loop()
+
+    try:
+
+        result = await loop.run_in_executor(
+            None,
+            perform_build,
+            build,
+            build_dir
         )
-    )
 
-    result = await asyncio.to_thread(
-        perform_build,
-        build,
-        build_dir
-    )
+        # =================================================
+        # LIB
+        # =================================================
 
-    data = load_data()
+        if (
+            result["lib"]
+            and result["lib"].exists()
+        ):
 
-    current_user = get_user(
-        data,
-        int(user_id)
-    )
+            with open(
+                result["lib"],
+                "rb"
+            ) as file:
 
-    status = result.get("status")
+                await context.bot.send_document(
+                    chat_id=user_id,
+                    document=file,
+                    caption=(
+                        "✅ <b>JNI библиотека готова!</b>\n\n"
+                        "📦 <code>libsvoyak.so</code>\n"
+                        "🏗 ABI: <code>arm64-v8a</code>\n"
+                        "🧩 NDK: <code>r25c</code>"
+                    ),
+                    parse_mode="HTML"
+                )
 
-    if status != "success":
+        # =================================================
+        # SQL
+        # =================================================
 
-        current_user["free_build"]["status"] = "error"
+        if (
+            result["sql"]
+            and result["sql"].exists()
+        ):
 
-        if build_id in data["builds"]:
+            with open(
+                result["sql"],
+                "rb"
+            ) as file:
 
-            data["builds"][build_id]["status"] = "error"
+                await context.bot.send_document(
+                    chat_id=user_id,
+                    document=file,
+                    caption=(
+                        "🗄 <b>svoyak.sql</b>\n\n"
+                        "Этот файл <b>НЕ загружался на FTP</b>.\n"
+                        "Импортируй его вручную в MySQL."
+                    ),
+                    parse_mode="HTML"
+                )
+
+        # =================================================
+        # FTP
+        # =================================================
+
+        if result["ftp"]:
+
+            ftp_text = (
+                "\n\n"
+                "📁 <b>FTP:</b> мод загружен в корень.\n"
+                f"🗑 Старых объектов заменено: "
+                f"<b>{result['ftp']['deleted']}</b>\n"
+                f"📤 Файлов загружено: "
+                f"<b>{result['ftp']['uploaded']}</b>\n"
+                "🗄 SQL на FTP не загружался."
+            )
+
+        else:
+
+            ftp_text = (
+                "\n\n"
+                "📁 FTP: пропущен."
+            )
+
+        # =================================================
+        # СОХРАНЕНИЕ ПРОЕКТА
+        # =================================================
+
+        user = get_user(
+            data,
+            user_id
+        )
+
+        user["projects"].append({
+            "name": build["project_name"],
+            "server": build["server"],
+            "owner": build["owner"],
+            "build_id": build_id,
+            "created_at": int(time.time())
+        })
+
+        user["free_build"] = True
 
         save_data(data)
 
-        error_text = result.get(
-            "error",
-            "Неизвестная ошибка."
+        await status_message.edit_text(
+            (
+                "🎉 <b>Сборка завершена!</b>\n\n"
+                f"🌐 Сервер: "
+                f"<code>{build['server']}</code>\n"
+                f"📱 Проект: "
+                f"<b>{build['project_name']}</b>\n"
+                f"👤 Владелец: "
+                f"<b>{build['owner']}</b>\n\n"
+                "📦 JNI: "
+                "<code>libsvoyak.so</code>\n"
+                "🏗 ABI: "
+                "<code>arm64-v8a</code>\n"
+                "🧩 NDK: "
+                "<code>r25c</code>\n"
+                "🗄 SQL: готов и отправлен отдельно."
+                + ftp_text
+            ),
+            parse_mode="HTML"
         )
 
-        await context.bot.send_message(
-            chat_id=int(user_id),
-            text=(
-                "❌ Сборка не завершена.\n\n"
-                f"Причина:\n{error_text}\n\n"
-                "Проверь настройки и файлы в админ-панели."
-            )
+    except Exception as e:
+
+        await status_message.edit_text(
+            (
+                "❌ <b>Ошибка сборки</b>\n\n"
+                f"<code>{str(e)[:7000]}</code>"
+            ),
+            parse_mode="HTML"
         )
-
-        try:
-
-            await context.bot.send_message(
-                chat_id=ADMIN_ID,
-                text=(
-                    "❌ ОШИБКА БЕСПЛАТНОЙ СБОРКИ\n\n"
-                    f"👤 Telegram ID: {user_id}\n"
-                    f"🏷 Проект: {build['project_name']}\n"
-                    f"📁 Build ID: {build_id}\n"
-                    f"📝 Ошибка: {error_text}"
-                )
-            )
-
-        except Exception:
-            pass
-
-        return
-
-    current_user["free_build"]["status"] = "completed"
-
-    if build_id in data["builds"]:
-
-        data["builds"][build_id]["status"] = "completed"
-
-    if build["project_name"] not in current_user["projects"]:
-
-        current_user["projects"].append(
-            build["project_name"]
-        )
-
-    save_data(data)
-
-    # =================================================
-    # LIBRARY
-    # =================================================
-
-    lib_path = result.get("lib")
-
-    if lib_path and os.path.exists(lib_path):
-
-        await context.bot.send_document(
-            chat_id=int(user_id),
-            document=lib_path,
-            caption=(
-                "✅ Клиентская библиотека готова\n\n"
-                f"🏷 Проект: {build['project_name']}\n"
-                f"🌐 Сервер: {build['server']['address']}\n"
-                "🧰 Компилятор: NDK r25c\n"
-                "📱 ABI: arm64-v8a"
-            )
-        )
-
-    # =================================================
-    # SQL
-    # =================================================
-
-    sql_path = result.get("sql")
-
-    if sql_path and os.path.exists(sql_path):
-
-        await context.bot.send_document(
-            chat_id=int(user_id),
-            document=sql_path,
-            caption=(
-                "🗄 БАЗА ДАННЫХ ДЛЯ РУЧНОГО ИМПОРТА\n\n"
-                "Файл: svoyak.sql\n"
-                f"База: {build['mysql']['database']}\n"
-                f"👑 Владелец {build['owner']} автоматически "
-                "получит 13-й уровень администратора "
-                "при создании аккаунта.\n\n"
-                "Импортируй этот SQL-файл в свою базу данных вручную."
-            )
-        )
-
-    # =================================================
-    # RESULT
-    # =================================================
-
-    ftp_text = ""
-
-    if build.get("ftp"):
-
-        if result.get("ftp_uploaded"):
-
-            ftp_text = (
-                "\n\n📁 Мод загружен на FTP.\n"
-                "🛡️ Другие папки и файлы FTP не затронуты.\n"
-                "🗄 svoyak.sql на FTP не загружался."
-            )
-
-    await context.bot.send_message(
-        chat_id=int(user_id),
-        text=(
-            "🎉 СБОРКА ЗАВЕРШЕНА!\n"
-            "━━━━━━━━━━━━━━━━━━━━\n\n"
-            f"🏷 Проект: {build['project_name']}\n"
-            f"🌐 Сервер: {build['server']['address']}\n"
-            "📱 Клиентская библиотека: готова\n"
-            "🗄 SQL: готов\n"
-            "⚙️ ABI: arm64-v8a\n"
-            "🛠 NDK: r25c\n"
-            f"👑 Владелец: {build['owner']}"
-            f"{ftp_text}\n\n"
-            "Файлы отправлены выше."
-        ),
-        reply_markup=InlineKeyboardMarkup([
-            [
-                InlineKeyboardButton(
-                    "📁 Мои проекты",
-                    callback_data="projects"
-                )
-            ],
-            [
-                InlineKeyboardButton(
-                    "🏠 Главное меню",
-                    callback_data="main_menu"
-                )
-            ],
-        ])
-    )
 
 
 # =====================================================
-# ADMIN PANEL
+# ADMIN UPLOAD
 # =====================================================
-
-def admin_menu():
-
-    return InlineKeyboardMarkup([
-        [
-            InlineKeyboardButton(
-                "📦 Загрузить чистый мод",
-                callback_data="admin_mod"
-            )
-        ],
-        [
-            InlineKeyboardButton(
-                "🗄 Загрузить svoyak.sql",
-                callback_data="admin_sql"
-            )
-        ],
-        [
-            InlineKeyboardButton(
-                "🧩 Загрузить JNI-проект",
-                callback_data="admin_jni"
-            )
-        ],
-        [
-            InlineKeyboardButton(
-                "📊 Состояние файлов",
-                callback_data="admin_status"
-            )
-        ],
-        [
-            InlineKeyboardButton(
-                "🏠 Главное меню",
-                callback_data="main_menu"
-            )
-        ],
-    ])
-
-
-async def admin_command(
-    update,
-    context
-):
-
-    if update.effective_user.id != ADMIN_ID:
-        return
-
-    context.user_data["admin_upload"] = None
-
-    await update.message.reply_text(
-        "👑 АДМИН-ПАНЕЛЬ\n"
-        "━━━━━━━━━━━━━━━━━━━━\n\n"
-        "Управление файлами сборки:",
-        reply_markup=admin_menu()
-    )
-
 
 async def admin_upload_document(
     update,
@@ -2736,58 +2184,77 @@ async def admin_upload_document(
     if update.effective_user.id != ADMIN_ID:
         return
 
-    upload_type = context.user_data.get(
-        "admin_upload"
-    )
-
-    if not upload_type:
-        return
-
     document = update.message.document
 
     if not document:
         return
 
+    mode = context.user_data.get(
+        "admin_upload_mode"
+    )
+
+    if not mode:
+        return
+
+    filename = (
+        document.file_name or ""
+    )
+
     # -------------------------------------------------
     # MOD
     # -------------------------------------------------
 
-    if upload_type == "mod":
+    if mode == "mod":
 
-        destination = MOD_FILE
+        if not filename.lower().endswith(
+            ".zip"
+        ):
+
+            await update.message.reply_text(
+                "❌ Мод должен быть ZIP-архивом."
+            )
+
+            return
+
+        target = MOD_FILE
 
     # -------------------------------------------------
     # SQL
     # -------------------------------------------------
 
-    elif upload_type == "sql":
+    elif mode == "sql":
 
-        destination = SQL_FILE
+        if not filename.lower().endswith(
+            ".sql"
+        ):
+
+            await update.message.reply_text(
+                "❌ Нужен SQL-файл."
+            )
+
+            return
+
+        target = SQL_FILE
 
     # -------------------------------------------------
     # JNI
     # -------------------------------------------------
 
-    elif upload_type == "jni":
+    elif mode == "jni":
 
-        destination = JNI_FILE
-
-        file_name = (
-            document.file_name or ""
-        )
-
-        if not file_name.lower().endswith(".zip"):
+        if not filename.lower().endswith(
+            ".zip"
+        ):
 
             await update.message.reply_text(
-                "❌ JNI-проект должен быть ZIP-архивом.\n\n"
-                "Отправь файл вида:\n"
-                "jni_project.zip"
+                "❌ JNI-проект должен быть ZIP-архивом."
             )
 
             return
 
-    else:
+        target = JNI_FILE
 
+    else:
         return
 
     try:
@@ -2795,99 +2262,514 @@ async def admin_upload_document(
         file = await document.get_file()
 
         await file.download_to_drive(
-            custom_path=str(destination)
+            custom_path=str(target)
         )
 
-    except Exception as error:
+        context.user_data.pop(
+            "admin_upload_mode",
+            None
+        )
 
         await update.message.reply_text(
-            f"❌ Ошибка загрузки: {error}"
+            (
+                "✅ <b>Файл успешно загружен!</b>\n\n"
+                f"📦 {target.name}"
+            ),
+            parse_mode="HTML",
+            reply_markup=admin_menu()
+        )
+
+    except Exception as e:
+
+        await update.message.reply_text(
+            (
+                "❌ Ошибка загрузки:\n"
+                f"<code>{str(e)}</code>"
+            ),
+            parse_mode="HTML"
+        )
+
+
+# =====================================================
+# ADMIN USERS
+# =====================================================
+
+async def admin_users(
+    update,
+    context
+):
+
+    if update.effective_user.id != ADMIN_ID:
+        return
+
+    data = load_data()
+
+    users = data.get(
+        "users",
+        {}
+    )
+
+    if not users:
+
+        text = (
+            "👥 <b>Пользователи</b>\n\n"
+            "Пользователей пока нет."
+        )
+
+    else:
+
+        lines = [
+            f"👥 <b>Пользователи:</b> {len(users)}\n"
+        ]
+
+        for user_id, user in list(
+            users.items()
+        )[:30]:
+
+            status = (
+                "🚫"
+                if user.get("blocked")
+                else "✅"
+            )
+
+            balance = user.get(
+                "balance",
+                0
+            )
+
+            projects_count = len(
+                user.get(
+                    "projects",
+                    []
+                )
+            )
+
+            lines.append(
+                f"{status} <code>{user_id}</code> "
+                f"💰 {balance} "
+                f"📂 {projects_count}"
+            )
+
+        if len(users) > 30:
+
+            lines.append(
+                "\nПоказаны первые 30."
+            )
+
+        text = "\n".join(lines)
+
+    await update.callback_query.edit_message_text(
+        text,
+        parse_mode="HTML",
+        reply_markup=back_menu("admin_panel")
+    )
+
+
+# =====================================================
+# ADMIN STATS
+# =====================================================
+
+async def admin_stats(
+    update,
+    context
+):
+
+    if update.effective_user.id != ADMIN_ID:
+        return
+
+    data = load_data()
+
+    users = data.get(
+        "users",
+        {}
+    )
+
+    builds = data.get(
+        "builds",
+        {}
+    )
+
+    total_projects = 0
+    blocked = 0
+    balance = 0
+
+    for user in users.values():
+
+        total_projects += len(
+            user.get(
+                "projects",
+                []
+            )
+        )
+
+        balance += int(
+            user.get(
+                "balance",
+                0
+            )
+        )
+
+        if user.get("blocked"):
+            blocked += 1
+
+    text = (
+        "📊 <b>Статистика SVOYAK</b>\n\n"
+        f"👥 Пользователей: <b>{len(users)}</b>\n"
+        f"🚫 Заблокировано: <b>{blocked}</b>\n"
+        f"🏗 Сборок: <b>{len(builds)}</b>\n"
+        f"📂 Проектов: <b>{total_projects}</b>\n"
+        f"💰 Баланс пользователей: <b>{balance}</b>\n\n"
+        f"📦 Мод: "
+        f"{'✅' if MOD_FILE.exists() else '❌'}\n"
+        f"🗄 SQL: "
+        f"{'✅' if SQL_FILE.exists() else '❌'}\n"
+        f"🧩 JNI: "
+        f"{'✅' if JNI_FILE.exists() else '❌'}"
+    )
+
+    await update.callback_query.edit_message_text(
+        text,
+        parse_mode="HTML",
+        reply_markup=back_menu("admin_panel")
+    )
+
+
+# =====================================================
+# ADMIN POINTS
+# =====================================================
+
+async def admin_points(
+    update,
+    context
+):
+
+    if update.effective_user.id != ADMIN_ID:
+        return
+
+    context.user_data[
+        "admin_action"
+    ] = "points"
+
+    await update.callback_query.edit_message_text(
+        "💰 <b>Управление очками</b>\n\n"
+        "Отправь:\n"
+        "<code>ID КОЛИЧЕСТВО</code>\n\n"
+        "Например:\n"
+        "<code>123456789 500</code>\n\n"
+        "Чтобы снять очки, укажи отрицательное число:\n"
+        "<code>123456789 -100</code>",
+        parse_mode="HTML",
+        reply_markup=back_menu("admin_panel")
+    )
+
+
+# =====================================================
+# ADMIN BROADCAST
+# =====================================================
+
+async def admin_broadcast(
+    update,
+    context
+):
+
+    if update.effective_user.id != ADMIN_ID:
+        return
+
+    context.user_data[
+        "admin_action"
+    ] = "broadcast"
+
+    await update.callback_query.edit_message_text(
+        "📢 <b>Рассылка</b>\n\n"
+        "Отправь текст сообщения.\n\n"
+        "Сообщение будет отправлено всем пользователям.",
+        parse_mode="HTML",
+        reply_markup=back_menu("admin_panel")
+    )
+
+
+# =====================================================
+# ADMIN TEXT ACTIONS
+# =====================================================
+
+async def admin_text_handler(
+    update,
+    context
+):
+
+    if update.effective_user.id != ADMIN_ID:
+        return
+
+    action = context.user_data.get(
+        "admin_action"
+    )
+
+    if not action:
+        return
+
+    value = update.message.text.strip()
+
+    # -------------------------------------------------
+    # ОЧКИ
+    # -------------------------------------------------
+
+    if action == "points":
+
+        parts = value.split()
+
+        if len(parts) != 2:
+
+            await update.message.reply_text(
+                "❌ Формат:\n"
+                "<code>ID КОЛИЧЕСТВО</code>",
+                parse_mode="HTML"
+            )
+
+            return
+
+        try:
+
+            target_id = int(parts[0])
+            amount = int(parts[1])
+
+        except ValueError:
+
+            await update.message.reply_text(
+                "❌ ID и количество должны быть числами."
+            )
+
+            return
+
+        data = load_data()
+
+        user = get_user(
+            data,
+            target_id
+        )
+
+        user["balance"] += amount
+
+        if user["balance"] < 0:
+            user["balance"] = 0
+
+        save_data(data)
+
+        context.user_data.pop(
+            "admin_action",
+            None
+        )
+
+        await update.message.reply_text(
+            (
+                "✅ <b>Баланс изменён.</b>\n\n"
+                f"👤 ID: <code>{target_id}</code>\n"
+                f"💰 Баланс: <b>{user['balance']}</b>"
+            ),
+            parse_mode="HTML",
+            reply_markup=admin_menu()
         )
 
         return
 
-    context.user_data["admin_upload"] = None
+    # -------------------------------------------------
+    # РАССЫЛКА
+    # -------------------------------------------------
 
-    await update.message.reply_text(
-        "✅ Файл успешно загружен.\n\n"
-        f"📁 {destination.name}",
-        reply_markup=admin_menu()
+    if action == "broadcast":
+
+        data = load_data()
+
+        users = data.get(
+            "users",
+            {}
+        )
+
+        sent = 0
+        failed = 0
+
+        status = await update.message.reply_text(
+            "📢 Начинаю рассылку..."
+        )
+
+        for user_id, user in users.items():
+
+            if user.get("blocked"):
+                continue
+
+            try:
+
+                await context.bot.send_message(
+                    chat_id=int(user_id),
+                    text=value
+                )
+
+                sent += 1
+
+                await asyncio.sleep(
+                    0.05
+                )
+
+            except Exception:
+
+                failed += 1
+
+        context.user_data.pop(
+            "admin_action",
+            None
+        )
+
+        await status.edit_text(
+            (
+                "📢 <b>Рассылка завершена.</b>\n\n"
+                f"✅ Отправлено: <b>{sent}</b>\n"
+                f"❌ Ошибок: <b>{failed}</b>"
+            ),
+            parse_mode="HTML",
+            reply_markup=admin_menu()
+        )
+
+
+# =====================================================
+# INVOICE
+# =====================================================
+
+async def send_project_invoice(
+    update,
+    context,
+    product
+):
+
+    prices = {
+        "pro": 499,
+        "ultimate": 999
+    }
+
+    titles = {
+        "pro": "SVOYAK PRO",
+        "ultimate": "SVOYAK ULTIMATE"
+    }
+
+    if product not in prices:
+        return
+
+    provider_token = os.getenv(
+        "PAYMENT_PROVIDER_TOKEN",
+        ""
+    )
+
+    if not provider_token:
+
+        await context.bot.send_message(
+            chat_id=update.effective_user.id,
+            text=(
+                "❌ Оплата пока не настроена.\n\n"
+                "Администратору нужно добавить "
+                "PAYMENT_PROVIDER_TOKEN."
+            )
+        )
+
+        return
+
+    await context.bot.send_invoice(
+        chat_id=update.effective_user.id,
+        title=titles[product],
+        description="Покупка тарифа SVOYAK",
+        payload=product,
+        provider_token=provider_token,
+        currency="RUB",
+        prices=[
+            LabeledPrice(
+                titles[product],
+                prices[product]
+            )
+        ]
     )
 
 
 # =====================================================
-# START
+# PRECHECKOUT
 # =====================================================
 
-async def start(
-    update: Update,
-    context: ContextTypes.DEFAULT_TYPE
+async def precheckout_callback(
+    update,
+    context
 ):
 
-    data = load_data()
+    query = update.pre_checkout_query
+
+    await query.answer(
+        ok=True
+    )
+
+
+# =====================================================
+# SUCCESS PAYMENT
+# =====================================================
+
+async def successful_payment(
+    update,
+    context
+):
 
     user = update.effective_user
 
-    current_user = get_user(
+    payment = (
+        update.message.successful_payment
+    )
+
+    product = payment.invoice_payload
+
+    data = load_data()
+
+    db_user = get_user(
         data,
         user.id
     )
 
-    if context.args:
+    db_user["has_purchased"] = True
 
-        argument = context.args[0]
+    # -------------------------------------------------
+    # РЕФЕРАЛЬНЫЕ 15%
+    # -------------------------------------------------
 
-        if argument.startswith("ref_"):
-
-            try:
-
-                ref_id = int(
-                    argument[4:]
-                )
-
-                if ref_id != user.id:
-
-                    if str(ref_id) in data["users"]:
-
-                        if current_user.get("referrer") is None:
-
-                            current_user["referrer"] = ref_id
-
-                            ref_user = get_user(
-                                data,
-                                ref_id
-                            )
-
-                            if user.id not in ref_user["referrals"]:
-
-                                ref_user["referrals"].append(
-                                    user.id
-                                )
-
-                            save_data(data)
-
-            except ValueError:
-
-                pass
-
-    name = user.first_name or "пользователь"
-
-    text = (
-        f"🙂 {name}, привет!\n\n"
-        "Собираю готовый мобильный проект Black Russia "
-        "под твой сервер: своё название, свои цвета, "
-        "своя иконка, свой APK.\n\n"
-        "💸 От 399 ⭐   🕓 Сборка ~10 минут   "
-        "✅ Всё автоматически\n\n"
-        "Мод, база данных и приложение устанавливаются "
-        "на твой сервер автоматически — тебе нужно только "
-        "ответить на вопросы бота.\n\n"
-        "Выбери раздел в меню под строкой ввода."
+    referrer_id = db_user.get(
+        "referrer"
     )
 
+    if referrer_id:
+
+        try:
+
+            referrer = get_user(
+                data,
+                int(referrer_id)
+            )
+
+            amount = payment.total_amount
+
+            profit = int(
+                amount * 0.15
+            )
+
+            referrer["balance"] += profit
+            referrer["total_profit"] += profit
+            referrer["monthly_profit"] += profit
+            referrer["weekly_profit"] += profit
+            referrer["today_profit"] += profit
+
+        except Exception:
+            pass
+
+    save_data(data)
+
     await update.message.reply_text(
-        text,
-        reply_markup=main_menu()
+        (
+            "🎉 <b>Оплата прошла успешно!</b>\n\n"
+            f"📦 Тариф: <b>{product.upper()}</b>\n\n"
+            "Спасибо за покупку!"
+        ),
+        parse_mode="HTML",
+        reply_markup=main_menu(user.id)
     )
 
 
@@ -2896,229 +2778,157 @@ async def start(
 # =====================================================
 
 async def buttons(
-    update: Update,
-    context: ContextTypes.DEFAULT_TYPE
+    update,
+    context
 ):
 
     query = update.callback_query
 
     await query.answer()
 
+    user_id = query.from_user.id
+    data = query.data
+
     # =================================================
     # MAIN
     # =================================================
 
-    if query.data == "main_menu":
-
-        name = query.from_user.first_name or "пользователь"
+    if data == "main_menu":
 
         await query.edit_message_text(
-            f"🙂 {name}, привет!\n\n"
-            "Собираю готовый мобильный проект Black Russia "
-            "под твой сервер: своё название, свои цвета, "
-            "своя иконка, свой APK.\n\n"
-            "💸 От 399 ⭐   🕓 Сборка ~10 минут   "
-            "✅ Всё автоматически\n\n"
-            "Мод, база данных и приложение устанавливаются "
-            "на твой сервер автоматически — тебе нужно только "
-            "ответить на вопросы бота.\n\n"
-            "Выбери раздел в меню под строкой ввода.",
-            reply_markup=main_menu()
+            "🤖 <b>SVOYAK</b>\n\n"
+            "Главное меню:",
+            parse_mode="HTML",
+            reply_markup=main_menu(user_id)
         )
 
     # =================================================
-    # SUPPORT
+    # SHOP
     # =================================================
 
-    elif query.data == "support":
+    elif data == "shop":
 
-        await show_support(query)
+        await query.edit_message_text(
+            "🛒 <b>Магазин</b>\n\n"
+            "Выбери тариф:",
+            parse_mode="HTML",
+            reply_markup=shop_menu()
+        )
+
+    elif data == "pro":
+
+        await query.edit_message_text(
+            "⭐ <b>SVOYAK PRO</b>\n\n"
+            "Расширенные возможности проекта.",
+            parse_mode="HTML",
+            reply_markup=pro_menu()
+        )
+
+    elif data == "ultimate":
+
+        await query.edit_message_text(
+            "💎 <b>SVOYAK ULTIMATE</b>\n\n"
+            "Максимальный набор возможностей.",
+            parse_mode="HTML",
+            reply_markup=ultimate_menu()
+        )
+
+    elif data == "compare":
+
+        await query.edit_message_text(
+            "📊 <b>Сравнение тарифов</b>\n\n"
+            "⭐ PRO — расширенные функции\n"
+            "💎 ULTIMATE — полный набор функций",
+            parse_mode="HTML",
+            reply_markup=compare_menu()
+        )
+
+    elif data == "buy_pro":
+
+        await send_project_invoice(
+            update,
+            context,
+            "pro"
+        )
+
+    elif data == "buy_ultimate":
+
+        await send_project_invoice(
+            update,
+            context,
+            "ultimate"
+        )
 
     # =================================================
-    # PARTNER
+    # FREE BUILD
     # =================================================
 
-    elif query.data == "partner":
+    elif data == "free_build":
 
-        await show_partner(
-            query,
+        await free_build_start(
+            update,
             context
+        )
+
+    # =================================================
+    # BUILD
+    # =================================================
+
+    elif data == "build":
+
+        await query.edit_message_text(
+            "⚙️ <b>Сборка</b>\n\n"
+            "Для сборки используй бесплатный проект "
+            "или купленный тариф.",
+            parse_mode="HTML",
+            reply_markup=back_menu()
         )
 
     # =================================================
     # PROJECTS
     # =================================================
 
-    elif query.data == "projects":
+    elif data == "projects":
 
-        await show_projects(query)
-
-    # =================================================
-    # SHOP
-    # =================================================
-
-    elif query.data == "shop":
-
-        await query.edit_message_text(
-            "🪙 МАГАЗИН SVOYAK\n"
-            "━━━━━━━━━━━━━━━━━━━━\n"
-            "В одном месте: готовые игровые проекты, "
-            "реклама в канале и услуги для владельцев ULTRA.\n\n"
-            "Выбери нужный раздел ниже.",
-            reply_markup=shop_menu()
-        )
-
-    elif query.data == "shop_projects":
-
-        await query.edit_message_text(
-            "📦 ПРОЕКТЫ BLACK RUSSIA\n"
-            "━━━━━━━━━━━━━━━━━━━━\n"
-            "В магазине два готовых проекта.\n\n"
-            "📦 BLACK RUSSIA PRO · ⭐️ 200\n\n"
-            "🎁 BLACK RUSSIA ULTIMATE v2.2 · ⭐️ 500\n\n"
-            "🪙 Автооплата: Telegram Stars.",
-            reply_markup=projects_menu()
-        )
-
-    # =================================================
-    # PRO
-    # =================================================
-
-    elif query.data == "project_pro":
-
-        await query.edit_message_text(
-            "📦 BLACK RUSSIA PRO\n"
-            "━━━━━━━━━━━━━━━━━━━━\n"
-            "⭐️ 200   🕓 сборка ~10 минут\n\n"
-            "Готовый мод с упором на тюнинг и визуал.\n\n"
-            "🔓 Доступ откроется сразу после оплаты.",
-            reply_markup=pro_menu()
-        )
-
-    # =================================================
-    # ULTIMATE
-    # =================================================
-
-    elif query.data == "project_ultimate":
-
-        await query.edit_message_text(
-            "📦 BLACK RUSSIA ULTIMATE v2.2\n"
-            "━━━━━━━━━━━━━━━━━━━━\n"
-            "⭐️ 500   🕓 сборка ~10 минут\n\n"
-            "Расширенная версия PRO с дополнительными системами.\n\n"
-            "🔓 Доступ откроется сразу после оплаты.",
-            reply_markup=ultimate_menu()
-        )
-
-    # =================================================
-    # COMPARE
-    # =================================================
-
-    elif query.data == "project_compare":
-
-        await query.edit_message_text(
-            "👁 PRO ИЛИ ULTIMATE v2.2\n"
-            "━━━━━━━━━━━━━━━━━━━━\n\n"
-            "📦 BLACK RUSSIA PRO · 200 🌟\n"
-            "📦 BLACK RUSSIA ULTIMATE · 500 🌟",
-            reply_markup=compare_menu()
-        )
-
-    # =================================================
-    # FREE
-    # =================================================
-
-    elif query.data == "free":
-
-        await start_free_build(query)
-
-    # =================================================
-    # BUILD
-    # =================================================
-
-    elif query.data == "build":
-
-        await query.edit_message_text(
-            "🔨 СБОРКА ПРОЕКТА\n"
-            "━━━━━━━━━━━━━━━━━━━━\n"
-            "Оплаченных запусков пока нет.\n\n"
-            "Купи BLACK RUSSIA PRO или ULTIMATE v2.2 — "
-            "и студия откроется сразу после оплаты. "
-            "Бесплатная сборка доступна кнопкой "
-            "«Бесплатный проект» в меню.",
-            reply_markup=InlineKeyboardMarkup([
-                [
-                    InlineKeyboardButton(
-                        "🛒 Купить проект",
-                        callback_data="shop"
-                    )
-                ],
-                [
-                    InlineKeyboardButton(
-                        "🆓 Бесплатный проект",
-                        callback_data="free"
-                    )
-                ],
-                [
-                    InlineKeyboardButton(
-                        "🏠 Главное меню",
-                        callback_data="main_menu"
-                    )
-                ],
-            ])
-        )
-
-    # =================================================
-    # ADS
-    # =================================================
-
-    elif query.data == "shop_ads":
-
-        await query.edit_message_text(
-            "📢 РЕКЛАМА В КАНАЛЕ\n\n"
-            "Здесь будут тарифы на рекламу.",
-            reply_markup=back_menu("shop")
-        )
-
-    # =================================================
-    # BUY PRO
-    # =================================================
-
-    elif query.data == "buy_pro":
-
-        await send_project_invoice(
+        await projects(
             update,
-            context,
-            "BLACK RUSSIA PRO",
-            200
+            context
         )
 
     # =================================================
-    # BUY ULTIMATE
+    # SUPPORT
     # =================================================
 
-    elif query.data == "buy_ultimate":
+    elif data == "support":
 
-        await send_project_invoice(
+        await support(
             update,
-            context,
-            "BLACK RUSSIA ULTIMATE v2.2",
-            500
+            context
+        )
+
+    # =================================================
+    # PARTNER
+    # =================================================
+
+    elif data == "partner":
+
+        await partner(
+            update,
+            context
         )
 
     # =================================================
     # ADMIN PANEL
     # =================================================
 
-    elif query.data == "admin_panel":
+    elif data == "admin_panel":
 
-        if query.from_user.id != ADMIN_ID:
+        if user_id != ADMIN_ID:
             return
 
         await query.edit_message_text(
-            "👑 АДМИН-ПАНЕЛЬ\n"
-            "━━━━━━━━━━━━━━━━━━━━\n\n"
-            "Управление файлами сборки:",
+            "👑 <b>Админ-панель</b>",
+            parse_mode="HTML",
             reply_markup=admin_menu()
         )
 
@@ -3126,258 +2936,123 @@ async def buttons(
     # ADMIN ACTIONS
     # =================================================
 
-    elif query.data.startswith("admin_"):
+    elif data.startswith("admin_"):
 
-        if query.from_user.id != ADMIN_ID:
+        if user_id != ADMIN_ID:
             return
 
-        if query.data == "admin_mod":
+        if data == "admin_mod":
 
-            context.user_data["admin_upload"] = "mod"
-
-            await query.edit_message_text(
-                "📦 ЗАГРУЗКА ЧИСТОГО МОДА\n\n"
-                "Отправь ZIP-архив с чистым модом.\n\n"
-                "Файл будет сохранён как:\n"
-                "admin_files/clean_mod.zip",
-                reply_markup=back_menu("admin_panel")
-            )
-
-        elif query.data == "admin_sql":
-
-            context.user_data["admin_upload"] = "sql"
+            context.user_data[
+                "admin_upload_mode"
+            ] = "mod"
 
             await query.edit_message_text(
-                "🗄 ЗАГРУЗКА SVOYAK.SQL\n\n"
-                "Отправь файл:\n"
-                "svoyak.sql",
-                reply_markup=back_menu("admin_panel")
+                "📦 <b>Загрузка мода</b>\n\n"
+                "Отправь ZIP-архив с модом.",
+                parse_mode="HTML",
+                reply_markup=back_menu(
+                    "admin_panel"
+                )
             )
 
-        elif query.data == "admin_jni":
+        elif data == "admin_sql":
 
-            context.user_data["admin_upload"] = "jni"
+            context.user_data[
+                "admin_upload_mode"
+            ] = "sql"
 
             await query.edit_message_text(
-                "🧩 ЗАГРУЗКА JNI-ПРОЕКТА\n"
-                "━━━━━━━━━━━━━━━━━━━━\n\n"
-                "Отправь ZIP-архив с JNI-проектом.\n\n"
-                "Например:\n"
-                "jni_project.zip\n\n"
-                "Внутри должны находиться исходники JNI "
-                "и файлы сборки CMake/ndk-build.\n\n"
-                "После загрузки бот автоматически будет "
-                "собирать:\n\n"
-                "📱 libsvoyak.so\n"
-                "⚙️ ABI: arm64-v8a\n"
-                "🛠 NDK: r25c\n\n"
-                "IP и PORT сервера будут переданы "
-                "в процесс сборки.",
-                reply_markup=back_menu("admin_panel")
+                "🗄 <b>Загрузка SQL</b>\n\n"
+                "Отправь файл <code>.sql</code>.",
+                parse_mode="HTML",
+                reply_markup=back_menu(
+                    "admin_panel"
+                )
             )
 
-        elif query.data == "admin_status":
+        elif data == "admin_jni":
+
+            context.user_data[
+                "admin_upload_mode"
+            ] = "jni"
+
+            await query.edit_message_text(
+                "🧩 <b>Загрузка JNI-проекта</b>\n\n"
+                "Отправь ZIP-архив.\n\n"
+                "Внутри должен находиться "
+                "<code>gradlew</code>.",
+                parse_mode="HTML",
+                reply_markup=back_menu(
+                    "admin_panel"
+                )
+            )
+
+        elif data == "admin_status":
 
             mod_status = (
-                "✅ загружен"
+                "✅ Загружен"
                 if MOD_FILE.exists()
-                else "❌ отсутствует"
+                else "❌ Нет"
             )
 
             sql_status = (
-                "✅ загружен"
+                "✅ Загружен"
                 if SQL_FILE.exists()
-                else "❌ отсутствует"
+                else "❌ Нет"
             )
 
             jni_status = (
-                "✅ загружен"
+                "✅ Загружен"
                 if JNI_FILE.exists()
-                else "❌ отсутствует"
-            )
-
-            build_status = (
-                "✅ найден"
-                if BUILD_SCRIPT.exists()
-                else "❌ отсутствует"
+                else "❌ Нет"
             )
 
             await query.edit_message_text(
-                "📊 ФАЙЛЫ SVOYAK\n"
-                "━━━━━━━━━━━━━━━━━━━━\n\n"
-                f"📦 clean_mod.zip — {mod_status}\n"
-                f"🗄 svoyak.sql — {sql_status}\n"
-                f"🧩 jni_project.zip — {jni_status}\n"
-                f"🧰 build_client.sh — {build_status}\n\n"
-                "Для сборки нужны:\n"
-                "📦 clean_mod.zip\n"
-                "🗄 svoyak.sql\n"
-                "🧩 jni_project.zip\n"
-                "🧰 build_client.sh\n\n"
-                "⚙️ ABI: arm64-v8a\n"
-                "🛠 NDK: r25c\n\n"
-                "Готовый libsvoyak.so загружать НЕ нужно — "
-                "бот собирает его из JNI-проекта автоматически.",
-                reply_markup=admin_menu()
-            )
-
-
-# =====================================================
-# PAYMENT
-# =====================================================
-
-async def send_project_invoice(
-    update,
-    context,
-    project_name,
-    stars
-):
-
-    user = update.effective_user
-
-    await context.bot.send_invoice(
-        chat_id=user.id,
-        title=project_name,
-        description=(
-            f"Персональная сборка проекта "
-            f"{project_name} под твой сервер."
-        ),
-        payload=(
-            f"project:{project_name}:{user.id}"
-        ),
-        currency="XTR",
-        prices=[
-            LabeledPrice(
-                label=project_name,
-                amount=stars
-            )
-        ]
-    )
-
-
-async def precheckout_callback(
-    update,
-    context
-):
-
-    await update.pre_checkout_query.answer(
-        ok=True
-    )
-
-
-async def successful_payment(
-    update,
-    context
-):
-
-    payment = update.message.successful_payment
-
-    user = update.effective_user
-
-    payload = payment.invoice_payload
-
-    if not payload.startswith("project:"):
-        return
-
-    parts = payload.split(":", 2)
-
-    if len(parts) != 3:
-        return
-
-    project_name = parts[1]
-
-    stars = payment.total_amount
-
-    data = load_data()
-
-    buyer = get_user(
-        data,
-        user.id
-    )
-
-    if project_name not in buyer["projects"]:
-
-        buyer["projects"].append(
-            project_name
-        )
-
-    buyer["has_purchased"] = True
-
-    referrer_id = buyer.get("referrer")
-
-    if referrer_id:
-
-        referrer = get_user(
-            data,
-            referrer_id
-        )
-
-        if referrer.get(
-            "has_purchased",
-            False
-        ):
-
-            referral_profit = int(
-                stars * 0.15
-            )
-
-            referrer["balance"] += referral_profit
-            referrer["total_profit"] += referral_profit
-            referrer["monthly_profit"] += referral_profit
-            referrer["weekly_profit"] += referral_profit
-            referrer["today_profit"] += referral_profit
-
-    save_data(data)
-
-    await update.message.reply_text(
-        "✅ ОПЛАТА ПОЛУЧЕНА!\n"
-        "━━━━━━━━━━━━━━━━━━━━\n\n"
-        f"📦 Проект: {project_name}\n"
-        f"🪙 Оплачено: {stars} ⭐\n\n"
-        "📁 Проект добавлен в «Мои проекты».\n"
-        "🔓 Заказ закреплён за твоим Telegram.",
-        reply_markup=InlineKeyboardMarkup([
-            [
-                InlineKeyboardButton(
-                    "📁 Мои проекты",
-                    callback_data="projects"
+                (
+                    "📋 <b>Статус файлов</b>\n\n"
+                    f"📦 Мод: {mod_status}\n"
+                    f"🗄 SQL: {sql_status}\n"
+                    f"🧩 JNI: {jni_status}\n\n"
+                    "⚙️ Сборка: Gradle\n"
+                    "📱 ABI: arm64-v8a\n"
+                    "🧩 NDK: r25c\n"
+                    "🚫 build_client.sh: не используется\n"
+                    "🚫 SQL на FTP: не загружается"
+                ),
+                parse_mode="HTML",
+                reply_markup=back_menu(
+                    "admin_panel"
                 )
-            ],
-            [
-                InlineKeyboardButton(
-                    "🔨 Собрать проект",
-                    callback_data="build"
-                )
-            ],
-            [
-                InlineKeyboardButton(
-                    "🏠 Главное меню",
-                    callback_data="main_menu"
-                )
-            ],
-        ])
-    )
-
-    try:
-
-        await context.bot.send_message(
-            chat_id=ADMIN_ID,
-            text=(
-                "💰 НОВАЯ ОПЛАТА\n"
-                "━━━━━━━━━━━━━━━━━━━━\n"
-                f"👤 Пользователь: {user.first_name}\n"
-                f"🆔 Telegram ID: {user.id}\n"
-                f"📦 Проект: {project_name}\n"
-                f"🪙 Сумма: {stars} ⭐"
             )
-        )
 
-    except Exception as error:
+        elif data == "admin_users":
 
-        print(
-            "Ошибка уведомления админу:",
-            error
-        )
+            await admin_users(
+                update,
+                context
+            )
+
+        elif data == "admin_stats":
+
+            await admin_stats(
+                update,
+                context
+            )
+
+        elif data == "admin_points":
+
+            await admin_points(
+                update,
+                context
+            )
+
+        elif data == "admin_broadcast":
+
+            await admin_broadcast(
+                update,
+                context
+            )
 
 
 # =====================================================
@@ -3389,78 +3064,97 @@ def run():
     if not TOKEN:
 
         raise RuntimeError(
-            "Не задан BOT_TOKEN в Environment Variables Render."
+            "Не задан BOT_TOKEN."
         )
 
+    # Health server
     threading.Thread(
         target=run_web_server,
         daemon=True
     ).start()
 
-    app = (
-        Application
-        .builder()
+    application = (
+        Application.builder()
         .token(TOKEN)
         .build()
     )
 
-    app.add_handler(
+    # =================================================
+    # КОМАНДЫ
+    # =================================================
+
+    application.add_handler(
         CommandHandler(
             "start",
             start
         )
     )
 
-    app.add_handler(
+    application.add_handler(
         CommandHandler(
             "admin",
             admin_command
         )
     )
 
-    # -------------------------------------------------
-    # АДМИНСКИЕ ФАЙЛЫ
-    # -------------------------------------------------
+    # =================================================
+    # АДМИНСКИЕ ТЕКСТОВЫЕ ДЕЙСТВИЯ
+    # =================================================
 
-    app.add_handler(
+    application.add_handler(
+        MessageHandler(
+            filters.TEXT
+            & ~filters.COMMAND,
+            admin_text_handler
+        ),
+        group=0
+    )
+
+    # =================================================
+    # ДОКУМЕНТЫ АДМИНКИ
+    # =================================================
+
+    application.add_handler(
         MessageHandler(
             filters.Document.ALL,
             admin_upload_document
         )
     )
 
-    # -------------------------------------------------
-    # БЕСПЛАТНАЯ СБОРКА
-    # -------------------------------------------------
+    # =================================================
+    # FREE BUILD
+    # =================================================
 
-    app.add_handler(
+    application.add_handler(
         MessageHandler(
-            filters.TEXT & ~filters.COMMAND,
+            filters.TEXT
+            & ~filters.COMMAND,
             free_build_message
-        )
+        ),
+        group=1
     )
 
-    # -------------------------------------------------
-    # CALLBACK BUTTONS
-    # -------------------------------------------------
+    # =================================================
+    # КНОПКИ
+    # =================================================
 
-    app.add_handler(
+    application.add_handler(
         CallbackQueryHandler(
             buttons
         )
     )
 
-    # -------------------------------------------------
-    # PAYMENT
-    # -------------------------------------------------
+    # =================================================
+    # ПЛАТЕЖИ
+    # =================================================
 
-    app.add_handler(
+    application.add_handler(
         PreCheckoutQueryHandler(
             precheckout_callback
         )
     )
 
-    app.add_handler(
+    application.add_handler(
         MessageHandler(
             filters.SUCCESSFUL_PAYMENT,
             successful_payment
@@ -3468,14 +3162,16 @@ def run():
     )
 
     print(
-        "SVOYAK BOT запущен!"
+        "SVOYAK BOT started..."
     )
 
-    app.run_polling()
+    application.run_polling(
+        drop_pending_updates=True
+    )
 
 
 # =====================================================
-# MAIN
+# START
 # =====================================================
 
 if __name__ == "__main__":
