@@ -42,9 +42,13 @@ ADMIN_FILES_DIR = Path("admin_files")
 
 MOD_FILE = ADMIN_FILES_DIR / "clean_mod.zip"
 SQL_FILE = ADMIN_FILES_DIR / "svoyak.sql"
-LIB_FILE = ADMIN_FILES_DIR / "libsvoyak.so"
 
-BUILD_SCRIPT = Path("build_client.sh")
+# JNI-проект вместо готового libsvoyak.so
+JNI_FILE = ADMIN_FILES_DIR / "jni_project.zip"
+JNI_DIR = ADMIN_FILES_DIR / "jni_project"
+
+# Скрипт автоматической сборки JNI
+BUILD_SCRIPT = Path(__file__).resolve().parent / "build_client.sh"
 
 BASE_DIR.mkdir(parents=True, exist_ok=True)
 ADMIN_FILES_DIR.mkdir(parents=True, exist_ok=True)
@@ -641,24 +645,6 @@ def parse_links(value):
 # =====================================================
 
 def parse_mysql(value):
-    """
-    Формат:
-
-    host username password database
-
-    database ВСЕГДА последнее значение.
-
-    Всё между username и database считается паролем.
-
-    Например:
-
-    127.0.0.1 game_user strong password 123 game_db
-
-    host     = 127.0.0.1
-    username = game_user
-    password = strong password 123
-    database = game_db
-    """
 
     parts = value.split()
 
@@ -1133,7 +1119,7 @@ def prepare_mod(
     )
 
     # -------------------------------------------------
-    # ОБЯЗАТЕЛЬНЫЙ CLEAN MOD
+    # CLEAN MOD
     # -------------------------------------------------
 
     if not MOD_FILE.exists():
@@ -1164,6 +1150,30 @@ def prepare_mod(
                         f"Проблемный файл: {bad_file}"
                     )
                 }
+
+            # Защита от ZIP Path Traversal
+            root = mod_dir.resolve()
+
+            for member in archive.infolist():
+
+                target = (
+                    mod_dir / member.filename
+                ).resolve()
+
+                if (
+                    target != root
+                    and not str(target).startswith(
+                        str(root) + os.sep
+                    )
+                ):
+
+                    return {
+                        "ok": False,
+                        "error": (
+                            "clean_mod.zip содержит "
+                            "опасный путь."
+                        )
+                    }
 
             archive.extractall(
                 mod_dir
@@ -1282,7 +1292,7 @@ def prepare_mod(
             )
 
     # -------------------------------------------------
-    # SQL В КОРЕНЬ ПОДГОТОВЛЕННОГО МОДА
+    # SQL
     # -------------------------------------------------
 
     sql_path = generate_sql(
@@ -1326,7 +1336,6 @@ def generate_sql(
     build_dir
 ):
 
-    # SQL теперь ОБЯЗАТЕЛЕН.
     if not SQL_FILE.exists():
 
         print("svoyak.sql отсутствует")
@@ -1399,7 +1408,153 @@ def generate_sql(
 
 
 # =====================================================
-# CLIENT
+# JNI PROJECT
+# =====================================================
+
+def prepare_jni_project():
+
+    if not JNI_FILE.exists():
+
+        return {
+            "ok": False,
+            "error": (
+                "JNI-проект не загружен. "
+                "Администратор должен загрузить "
+                "jni_project.zip через /admin."
+            )
+        }
+
+    if JNI_DIR.exists():
+
+        try:
+            shutil.rmtree(JNI_DIR)
+
+        except Exception as error:
+
+            return {
+                "ok": False,
+                "error": (
+                    f"Не удалось очистить старый JNI-проект: "
+                    f"{error}"
+                )
+            }
+
+    JNI_DIR.mkdir(
+        parents=True,
+        exist_ok=True
+    )
+
+    try:
+
+        with zipfile.ZipFile(
+            JNI_FILE,
+            "r"
+        ) as archive:
+
+            bad_file = archive.testzip()
+
+            if bad_file:
+
+                return {
+                    "ok": False,
+                    "error": (
+                        f"JNI ZIP повреждён. "
+                        f"Проблемный файл: {bad_file}"
+                    )
+                }
+
+            # -------------------------------------------------
+            # Защита от ZIP Path Traversal
+            # -------------------------------------------------
+
+            root = JNI_DIR.resolve()
+
+            for member in archive.infolist():
+
+                target = (
+                    JNI_DIR / member.filename
+                ).resolve()
+
+                if (
+                    target != root
+                    and not str(target).startswith(
+                        str(root) + os.sep
+                    )
+                ):
+
+                    return {
+                        "ok": False,
+                        "error": (
+                            "JNI ZIP содержит опасный путь."
+                        )
+                    }
+
+            archive.extractall(
+                JNI_DIR
+            )
+
+    except zipfile.BadZipFile:
+
+        return {
+            "ok": False,
+            "error": (
+                "jni_project.zip повреждён "
+                "или не является ZIP-архивом."
+            )
+        }
+
+    except Exception as error:
+
+        return {
+            "ok": False,
+            "error": (
+                f"Ошибка распаковки JNI-проекта: {error}"
+            )
+        }
+
+    # -------------------------------------------------
+    # Если ZIP содержит одну папку,
+    # используем её как корень проекта
+    # -------------------------------------------------
+
+    current_dir = JNI_DIR
+
+    try:
+
+        items = list(
+            JNI_DIR.iterdir()
+        )
+
+        directories = [
+            item
+            for item in items
+            if item.is_dir()
+        ]
+
+        files = [
+            item
+            for item in items
+            if item.is_file()
+        ]
+
+        if (
+            len(directories) == 1
+            and not files
+        ):
+
+            current_dir = directories[0]
+
+    except Exception:
+        pass
+
+    return {
+        "ok": True,
+        "dir": current_dir
+    }
+
+
+# =====================================================
+# CLIENT / JNI BUILD
 # =====================================================
 
 def build_client(
@@ -1410,47 +1565,127 @@ def build_client(
     output = build_dir / "libsvoyak.so"
 
     # -------------------------------------------------
-    # Готовая библиотека от администратора
+    # Подготавливаем JNI
     # -------------------------------------------------
 
-    if LIB_FILE.exists():
+    jni_result = prepare_jni_project()
 
-        try:
+    if not jni_result.get("ok"):
 
-            shutil.copy2(
-                LIB_FILE,
-                output
-            )
+        print(
+            "JNI ERROR:",
+            jni_result.get("error")
+        )
 
-            if output.exists() and output.stat().st_size > 0:
-                return output
+        return None
 
-        except Exception as error:
-
-            print(
-                "Ошибка копирования libsvoyak.so:",
-                error
-            )
+    jni_dir = Path(
+        jni_result["dir"]
+    )
 
     # -------------------------------------------------
-    # Автоматическая сборка
+    # Проверяем build_client.sh
     # -------------------------------------------------
 
     if not BUILD_SCRIPT.exists():
 
+        print(
+            "BUILD SCRIPT NOT FOUND:",
+            BUILD_SCRIPT
+        )
+
         return None
 
+    # -------------------------------------------------
+    # ENV для JNI
+    # -------------------------------------------------
+
+    env = os.environ.copy()
+
+    env["SERVER_IP"] = str(
+        build["server"]["ip"]
+    )
+
+    env["SERVER_PORT"] = str(
+        build["server"]["port"]
+    )
+
+    env["SERVER_ADDRESS"] = str(
+        build["server"]["address"]
+    )
+
+    env["PROJECT_NAME"] = str(
+        build["project_name"]
+    )
+
+    env["OWNER_NICK"] = str(
+        build["owner"]
+    )
+
+    env["ANDROID_ABI"] = "arm64-v8a"
+
+    env["ANDROID_NDK_VERSION"] = "r25c"
+
+    env["SVOYAK_BUILD_DIR"] = str(
+        build_dir.resolve()
+    )
+
+    # -------------------------------------------------
+    # Запуск сборки
+    # -------------------------------------------------
+
     try:
+
+        print(
+            "================================================="
+        )
+
+        print(
+            "SVOYAK JNI BUILD"
+        )
+
+        print(
+            "JNI DIR:",
+            jni_dir
+        )
+
+        print(
+            "SERVER:",
+            build["server"]["address"]
+        )
+
+        print(
+            "PROJECT:",
+            build["project_name"]
+        )
+
+        print(
+            "OWNER:",
+            build["owner"]
+        )
+
+        print(
+            "ABI: arm64-v8a"
+        )
+
+        print(
+            "NDK: r25c"
+        )
+
+        print(
+            "================================================="
+        )
 
         result = subprocess.run(
             [
                 "bash",
                 str(BUILD_SCRIPT.resolve())
             ],
-            cwd=str(build_dir),
+            cwd=str(jni_dir),
             capture_output=True,
             text=True,
-            timeout=900
+            timeout=900,
+            env=env
         )
 
         print(
@@ -1459,52 +1694,147 @@ def build_client(
         )
 
         if result.stdout:
+
             print(
-                "BUILD STDOUT:",
-                result.stdout[-5000:]
+                "BUILD STDOUT:"
+            )
+
+            print(
+                result.stdout[-10000:]
             )
 
         if result.stderr:
+
             print(
-                "BUILD STDERR:",
-                result.stderr[-5000:]
+                "BUILD STDERR:"
+            )
+
+            print(
+                result.stderr[-10000:]
             )
 
         if result.returncode != 0:
+
             return None
 
+        # -------------------------------------------------
+        # Ищем libsvoyak.so
+        # -------------------------------------------------
+
         candidates = [
-            build_dir / "libsvoyak.so",
-            build_dir / "build" / "libsvoyak.so",
-            build_dir / "output" / "libsvoyak.so",
-            build_dir / "libs" / "libsvoyak.so",
+
+            jni_dir / "libsvoyak.so",
+
+            jni_dir / "build" / "libsvoyak.so",
+
+            jni_dir / "output" / "libsvoyak.so",
+
+            jni_dir / "libs" / "libsvoyak.so",
+
+            jni_dir / "app" / "build" / "intermediates"
+            / "cxx" / "Release" / "arm64-v8a"
+            / "obj" / "arm64-v8a"
+            / "libsvoyak.so",
+
+            jni_dir / "app" / "build" / "intermediates"
+            / "cxx" / "Release"
+            / "obj" / "arm64-v8a"
+            / "libsvoyak.so",
+
+            jni_dir / "app" / "build" / "intermediates"
+            / "cxx" / "Debug"
+            / "obj" / "arm64-v8a"
+            / "libsvoyak.so",
         ]
+
+        # -------------------------------------------------
+        # Полный поиск
+        # -------------------------------------------------
+
+        try:
+
+            for found in jni_dir.rglob(
+                "libsvoyak.so"
+            ):
+
+                if found not in candidates:
+
+                    candidates.append(
+                        found
+                    )
+
+        except Exception as error:
+
+            print(
+                "Ошибка поиска библиотеки:",
+                error
+            )
+
+        # -------------------------------------------------
+        # Копируем результат
+        # -------------------------------------------------
 
         for candidate in candidates:
 
-            if candidate.exists():
+            try:
 
-                if candidate != output:
+                if not candidate.exists():
+                    continue
 
-                    shutil.copy2(
-                        candidate,
+                if candidate.stat().st_size <= 0:
+                    continue
+
+                shutil.copy2(
+                    candidate,
+                    output
+                )
+
+                if (
+                    output.exists()
+                    and output.stat().st_size > 0
+                ):
+
+                    print(
+                        "================================================="
+                    )
+
+                    print(
+                        "JNI BUILD SUCCESS:"
+                    )
+
+                    print(
                         output
                     )
 
-                if output.exists() and output.stat().st_size > 0:
+                    print(
+                        "SIZE:",
+                        output.stat().st_size
+                    )
+
+                    print(
+                        "================================================="
+                    )
 
                     return output
+
+            except Exception as error:
+
+                print(
+                    "Ошибка копирования:",
+                    candidate,
+                    error
+                )
 
     except subprocess.TimeoutExpired:
 
         print(
-            "Сборка libsvoyak.so превысила лимит 900 секунд."
+            "JNI-сборка превысила лимит 900 секунд."
         )
 
     except Exception as error:
 
         print(
-            "Ошибка сборки клиента:",
+            "Ошибка JNI-сборки:",
             error
         )
 
@@ -1521,6 +1851,7 @@ def upload_ftp(
 ):
 
     if not ftp_config:
+
         return {
             "ok": True,
             "error": None
@@ -1531,7 +1862,8 @@ def upload_ftp(
     try:
 
         print(
-            f"FTP: подключение к {ftp_config['ip']}:{ftp_config['port']}"
+            f"FTP: подключение к "
+            f"{ftp_config['ip']}:{ftp_config['port']}"
         )
 
         ftp.connect(
@@ -1547,23 +1879,30 @@ def upload_ftp(
 
         ftp.set_pasv(True)
 
-        # ---------------------------------------------
+        # -------------------------------------------------
         # Безопасная загрузка директории
-        # ---------------------------------------------
+        # -------------------------------------------------
 
         def ensure_remote_dir(name):
 
             try:
+
                 ftp.cwd(name)
+
                 return True
+
             except Exception:
                 pass
 
             try:
+
                 ftp.mkd(name)
                 ftp.cwd(name)
+
                 return True
+
             except Exception:
+
                 return False
 
         def upload_directory(local_path):
@@ -1574,11 +1913,13 @@ def upload_ftp(
 
                     current_name = item.name
 
-                    if not ensure_remote_dir(current_name):
+                    if not ensure_remote_dir(
+                        current_name
+                    ):
 
                         raise RuntimeError(
-                            f"Не удалось создать/открыть FTP-папку: "
-                            f"{current_name}"
+                            f"Не удалось создать/открыть "
+                            f"FTP-папку: {current_name}"
                         )
 
                     upload_directory(item)
@@ -1599,11 +1940,15 @@ def upload_ftp(
 
         ftp.cwd("/")
 
-        upload_directory(local_dir)
+        upload_directory(
+            local_dir
+        )
 
         ftp.quit()
 
-        print("FTP: загрузка завершена.")
+        print(
+            "FTP: загрузка завершена."
+        )
 
         return {
             "ok": True,
@@ -1618,7 +1963,10 @@ def upload_ftp(
             "запущен ли FTP-сервис и открыт ли порт."
         )
 
-        print("FTP ERROR:", error_text)
+        print(
+            "FTP ERROR:",
+            error_text
+        )
 
         try:
             ftp.close()
@@ -1637,7 +1985,10 @@ def upload_ftp(
             "Проверь IP, порт и firewall."
         )
 
-        print("FTP ERROR:", error_text)
+        print(
+            "FTP ERROR:",
+            error_text
+        )
 
         try:
             ftp.close()
@@ -1681,7 +2032,7 @@ def perform_build(
     try:
 
         # -------------------------------------------------
-        # 1. Проверяем обязательные файлы ДО сборки
+        # 1. CLEAN MOD
         # -------------------------------------------------
 
         if not MOD_FILE.exists():
@@ -1695,6 +2046,10 @@ def perform_build(
                 )
             }
 
+        # -------------------------------------------------
+        # 2. SQL
+        # -------------------------------------------------
+
         if not SQL_FILE.exists():
 
             return {
@@ -1707,7 +2062,35 @@ def perform_build(
             }
 
         # -------------------------------------------------
-        # 2. Подготавливаем мод
+        # 3. JNI
+        # -------------------------------------------------
+
+        if not JNI_FILE.exists():
+
+            return {
+                "status": "error",
+                "error": (
+                    "jni_project.zip отсутствует. "
+                    "Администратор должен загрузить JNI-проект "
+                    "через /admin."
+                )
+            }
+
+        # -------------------------------------------------
+        # 4. BUILD SCRIPT
+        # -------------------------------------------------
+
+        if not BUILD_SCRIPT.exists():
+
+            return {
+                "status": "error",
+                "error": (
+                    "build_client.sh отсутствует."
+                )
+            }
+
+        # -------------------------------------------------
+        # 5. PREPARE MOD
         # -------------------------------------------------
 
         prepared = prepare_mod(
@@ -1726,7 +2109,7 @@ def perform_build(
             }
 
         # -------------------------------------------------
-        # 3. SQL
+        # 6. SQL
         # -------------------------------------------------
 
         sql_path = build_dir / "svoyak.sql"
@@ -1739,7 +2122,7 @@ def perform_build(
             }
 
         # -------------------------------------------------
-        # 4. Клиентская библиотека
+        # 7. JNI BUILD
         # -------------------------------------------------
 
         lib_path = build_client(
@@ -1752,14 +2135,19 @@ def perform_build(
             return {
                 "status": "error",
                 "error": (
-                    "libsvoyak.so не создана. "
-                    "Загрузите готовую libsvoyak.so через /admin "
-                    "или добавьте рабочий build_client.sh."
+                    "libsvoyak.so не создана.\n\n"
+                    "Проверьте:\n"
+                    "🧩 JNI-проект загружен\n"
+                    "🧰 build_client.sh существует\n"
+                    "🛠 NDK r25c установлен\n"
+                    "📱 ABI = arm64-v8a\n"
+                    "🔨 JNI-проект действительно собирает "
+                    "libsvoyak.so"
                 )
             }
 
         # -------------------------------------------------
-        # 5. FTP
+        # 8. FTP
         # -------------------------------------------------
 
         ftp_result = {
@@ -1789,7 +2177,7 @@ def perform_build(
                 }
 
         # -------------------------------------------------
-        # 6. Успех
+        # 9. SUCCESS
         # -------------------------------------------------
 
         return {
@@ -1865,7 +2253,10 @@ async def create_build(
             "📦 Проверяю чистый мод.\n"
             "🧰 Подготавливаю мод.\n"
             "🗄 Формирую svoyak.sql.\n"
-            "📱 Подготавливаю клиентскую библиотеку.\n\n"
+            "🧩 Распаковываю JNI-проект.\n"
+            "📱 Собираю libsvoyak.so.\n"
+            "⚙️ ABI: arm64-v8a\n"
+            "🛠 NDK: r25c\n\n"
             "Статус: сборка запущена."
         )
     )
@@ -1890,6 +2281,7 @@ async def create_build(
         current_user["free_build"]["status"] = "error"
 
         if build_id in data["builds"]:
+
             data["builds"][build_id]["status"] = "error"
 
         save_data(data)
@@ -1929,6 +2321,7 @@ async def create_build(
     current_user["free_build"]["status"] = "completed"
 
     if build_id in data["builds"]:
+
         data["builds"][build_id]["status"] = "completed"
 
     if build["project_name"] not in current_user["projects"]:
@@ -1954,7 +2347,8 @@ async def create_build(
                 "✅ Клиентская библиотека готова\n\n"
                 f"🏷 Проект: {build['project_name']}\n"
                 f"🌐 Сервер: {build['server']['address']}\n"
-                "🧰 Компилятор: NDK r25c"
+                "🧰 Компилятор: NDK r25c\n"
+                "📱 ABI: arm64-v8a"
             )
         )
 
@@ -2003,6 +2397,8 @@ async def create_build(
             f"🌐 Сервер: {build['server']['address']}\n"
             "📱 Клиентская библиотека: готова\n"
             "🗄 SQL: готов\n"
+            "⚙️ ABI: arm64-v8a\n"
+            "🛠 NDK: r25c\n"
             f"👑 Владелец: {build['owner']}"
             f"{ftp_text}\n\n"
             "Файлы отправлены выше."
@@ -2045,8 +2441,8 @@ def admin_menu():
         ],
         [
             InlineKeyboardButton(
-                "📱 Загрузить libsvoyak.so",
-                callback_data="admin_lib"
+                "🧩 Загрузить JNI-проект",
+                callback_data="admin_jni"
             )
         ],
         [
@@ -2102,17 +2498,43 @@ async def admin_upload_document(
     if not document:
         return
 
+    # -------------------------------------------------
+    # MOD
+    # -------------------------------------------------
+
     if upload_type == "mod":
 
         destination = MOD_FILE
+
+    # -------------------------------------------------
+    # SQL
+    # -------------------------------------------------
 
     elif upload_type == "sql":
 
         destination = SQL_FILE
 
-    elif upload_type == "lib":
+    # -------------------------------------------------
+    # JNI
+    # -------------------------------------------------
 
-        destination = LIB_FILE
+    elif upload_type == "jni":
+
+        destination = JNI_FILE
+
+        file_name = (
+            document.file_name or ""
+        )
+
+        if not file_name.lower().endswith(".zip"):
+
+            await update.message.reply_text(
+                "❌ JNI-проект должен быть ZIP-архивом.\n\n"
+                "Отправь файл вида:\n"
+                "jni_project.zip"
+            )
+
+            return
 
     else:
 
@@ -2460,20 +2882,31 @@ async def buttons(
             context.user_data["admin_upload"] = "sql"
 
             await query.edit_message_text(
-                "🗄 ЗАГРУЗКА SVoyak.SQL\n\n"
+                "🗄 ЗАГРУЗКА SVOYAK.SQL\n\n"
                 "Отправь файл:\n"
                 "svoyak.sql",
                 reply_markup=back_menu("admin_panel")
             )
 
-        elif query.data == "admin_lib":
+        elif query.data == "admin_jni":
 
-            context.user_data["admin_upload"] = "lib"
+            context.user_data["admin_upload"] = "jni"
 
             await query.edit_message_text(
-                "📱 ЗАГРУЗКА LIBSVOYAK.SO\n\n"
-                "Отправь готовый файл:\n"
-                "libsvoyak.so",
+                "🧩 ЗАГРУЗКА JNI-ПРОЕКТА\n"
+                "━━━━━━━━━━━━━━━━━━━━\n\n"
+                "Отправь ZIP-архив с JNI-проектом.\n\n"
+                "Например:\n"
+                "jni_project.zip\n\n"
+                "Внутри должны находиться исходники JNI "
+                "и файлы сборки CMake/ndk-build.\n\n"
+                "После загрузки бот автоматически будет "
+                "собирать:\n\n"
+                "📱 libsvoyak.so\n"
+                "⚙️ ABI: arm64-v8a\n"
+                "🛠 NDK: r25c\n\n"
+                "IP и PORT сервера будут переданы "
+                "в процесс сборки.",
                 reply_markup=back_menu("admin_panel")
             )
 
@@ -2491,9 +2924,9 @@ async def buttons(
                 else "❌ отсутствует"
             )
 
-            lib_status = (
+            jni_status = (
                 "✅ загружен"
-                if LIB_FILE.exists()
+                if JNI_FILE.exists()
                 else "❌ отсутствует"
             )
 
@@ -2508,14 +2941,18 @@ async def buttons(
                 "━━━━━━━━━━━━━━━━━━━━\n\n"
                 f"📦 clean_mod.zip — {mod_status}\n"
                 f"🗄 svoyak.sql — {sql_status}\n"
-                f"📱 libsvoyak.so — {lib_status}\n"
+                f"🧩 jni_project.zip — {jni_status}\n"
                 f"🧰 build_client.sh — {build_status}\n\n"
-                "Для бесплатной сборки минимум нужны:\n"
+                "Для сборки нужны:\n"
                 "📦 clean_mod.zip\n"
                 "🗄 svoyak.sql\n"
-                "📱 libsvoyak.so\n\n"
-                "Либо вместо libsvoyak.so нужен рабочий "
-                "build_client.sh.",
+                "🧩 jni_project.zip\n"
+                "🧰 build_client.sh\n\n"
+                "⚙️ ABI: arm64-v8a\n"
+                "🛠 NDK: r25c\n\n"
+                "Готовый libsvoyak.so теперь "
+                "загружать НЕ нужно — бот собирает его "
+                "из JNI-проекта автоматически.",
                 reply_markup=admin_menu()
             )
 
